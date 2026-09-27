@@ -125,3 +125,4 @@ Optional, with defaults: `NODE_ENV=development`, `PORT=3000`, `DATABASE_URL=./da
 
 - Don't add a new HTTP client/ORM library without checking this file first — Drizzle + `better-sqlite3` is the intended stack for this project's lifetime (SQLite is a deliberate choice for the sample; swapping to Postgres is a future step, not implied by any single task).
 - Don't remove the dummy-data TODOs' surrounding structure (route protection, response shape) when replacing them with real logic — only the data source should change.
+- The dist folder in the root directory stores the compiled source code of the app. Do not touch this folder (including any files inside it) and do not make any changes to any of the files inside this.
