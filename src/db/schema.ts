@@ -52,7 +52,6 @@ export const categories = sqliteTable('categories', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   name: text('name').notNull(),
   slug: text('slug').notNull().unique(),
-  parentId: integer('parent_id').references((): any => categories.id),
 });
 
 export const products = sqliteTable('products', {
@@ -210,8 +209,7 @@ export const usersRelations = relations(users, ({ many }) => ({
   reviews: many(reviews),
 }));
 
-export const categoriesRelations = relations(categories, ({ one, many }) => ({
-  parent: one(categories, { fields: [categories.parentId], references: [categories.id] }),
+export const categoriesRelations = relations(categories, ({ many }) => ({
   products: many(products),
 }));
 
