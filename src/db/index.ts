@@ -1,0 +1,13 @@
+import Database from 'better-sqlite3';
+import { drizzle } from 'drizzle-orm/better-sqlite3';
+import * as schema from './schema.js';
+import { env } from '../config/env.js';
+
+const sqlite = new Database(env.DATABASE_URL);
+
+// WAL mode reduces write-lock contention (SQLite's single-writer limitation
+// is the main reason you'd migrate to Postgres for real production scale).
+sqlite.pragma('journal_mode = WAL');
+sqlite.pragma('foreign_keys = ON');
+
+export const db = drizzle(sqlite, { schema });
