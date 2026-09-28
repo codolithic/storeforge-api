@@ -28,6 +28,8 @@ npm start            # run compiled server (node dist/server.js)
 npm run db:generate  # generate a Drizzle migration from src/db/schema.ts
 npm run db:migrate   # apply migrations to the SQLite file
 npm run db:studio    # open Drizzle Studio to inspect data
+npm run db:seed      # load data/categories.json into the categories table (idempotent)
+npm run db:seed:products  # load data/products.json into products (run db:seed first)
 npm test             # vitest run
 npx tsc --noEmit     # type-check only
 ```
@@ -101,7 +103,10 @@ Only `auth` has a full service layer wired to the DB. `products`, `categories`, 
 
 - Schema lives entirely in `src/db/schema.ts`. After editing it, run `npm run db:generate` then `npm run db:migrate` — never hand-write SQL migrations.
 - Adding a new table also means adding its `relations(...)` block if it needs `db.query.<table>` with `with:`, and the table must be exported from `schema.ts` (the whole module is passed to `drizzle(sqlite, { schema })`).
-- Do not seed data unless explicitly asked; the DB ships empty (schema/migrations only).
+- Seeding: `src/db/seed.ts` (`npm run db:seed`) loads `data/categories.json`. It opens its own better-sqlite3 connection from `DATABASE_URL` rather than importing `config/env.ts`, so it doesn't demand JWT secrets just to open the DB; it preserves explicit ids and upserts on conflict, so re-running is safe and won't break `products.category_id` references.
+- `src/db/seed-products.ts` (`npm run db:seed:products`) loads `data/products.json` (1271 rows) the same way. **Order matters:** `products.category_id` is a real FK, so `db:seed` must run before `db:seed:products`; the script pre-checks that every referenced category id exists and fails with a pointer to `db:seed` rather than surfacing a bare "FOREIGN KEY constraint failed".
+- `data/categories.json` still carries a `parentId` field the schema no longer has; the categories seeder validates it, ignores it, and warns.
+- Beyond that, do not seed data unless explicitly asked.
 
 ## Environment
 
