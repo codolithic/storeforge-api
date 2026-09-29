@@ -1,13 +1,21 @@
-import { seedCategories } from "./seed-categories.js";
-import { seedProducts } from "./seed-products.js";
+import { seedCategories } from './seed-categories.js';
+import { seedProducts } from './seed-products.js';
+import { seedProductImages } from './seed-product-images.js';
+import { seedProductVariants } from './seed-product-variants.js';
+import { seedUsers } from './seed-users.js';
+import { seedAddresses } from './seed-addresses.js';
 
-const inputs = process.argv.slice(2);
-const tables = inputs.map((i) => i.toLowerCase());
-
-if (tables.includes("categories")) {
+try {
   await seedCategories();
-}
-
-if (tables.includes("products")) {
   await seedProducts();
+  await seedProductImages();
+  await seedProductVariants();
+  await seedUsers();
+  await seedAddresses();
+} catch (err: unknown) {
+  if (err instanceof Error) {
+    console.error('❌ Seeding Failed', err.message);
+  } else {
+    console.error('❌ Seeding Failed');
+  }
 }

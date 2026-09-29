@@ -46,7 +46,7 @@ export const addresses = sqliteTable('addresses', {
   line1: text('line1').notNull(),
   line2: text('line2'),
   city: text('city').notNull(),
-  state: text('state'),
+  state: text('state').notNull(),
   postalCode: text('postal_code').notNull(),
   country: text('country').notNull(),
   isDefault: integer('is_default', { mode: 'boolean' }).notNull().default(false),
@@ -254,17 +254,26 @@ export const cartsRelations = relations(carts, ({ one, many }) => ({
 
 export const cartItemsRelations = relations(cartItems, ({ one }) => ({
   cart: one(carts, { fields: [cartItems.cartId], references: [carts.id] }),
-  variant: one(productVariants, { fields: [cartItems.variantId], references: [productVariants.id] }),
+  variant: one(productVariants, {
+    fields: [cartItems.variantId],
+    references: [productVariants.id],
+  }),
 }));
 
 export const ordersRelations = relations(orders, ({ one, many }) => ({
   user: one(users, { fields: [orders.userId], references: [users.id] }),
-  shippingAddress: one(addresses, { fields: [orders.shippingAddressId], references: [addresses.id] }),
+  shippingAddress: one(addresses, {
+    fields: [orders.shippingAddressId],
+    references: [addresses.id],
+  }),
   items: many(orderItems),
   payments: many(payments),
 }));
 
 export const orderItemsRelations = relations(orderItems, ({ one }) => ({
   order: one(orders, { fields: [orderItems.orderId], references: [orders.id] }),
-  variant: one(productVariants, { fields: [orderItems.variantId], references: [productVariants.id] }),
+  variant: one(productVariants, {
+    fields: [orderItems.variantId],
+    references: [productVariants.id],
+  }),
 }));

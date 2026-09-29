@@ -14,7 +14,6 @@
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
     "db:seed": "tsx src/db/seed.ts",
-    "db:seed:products": "tsx src/db/seed-products.ts",
     "test": "vitest run"
   },
   "dependencies": {

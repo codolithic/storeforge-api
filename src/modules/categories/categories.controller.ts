@@ -1,13 +1,38 @@
 import type { Request, Response } from 'express';
 import { sendSuccess } from '../../utils/apiResponse.js';
+import { db, Category } from '../../db/index.js';
 
-// TODO: replace with real Drizzle query against categories once seeded.
-const dummyCategories = [
-  { id: 1, name: 'Electronics', slug: 'electronics', parentId: null },
-  { id: 2, name: 'Accessories', slug: 'accessories', parentId: 1 },
-  { id: 3, name: 'Audio', slug: 'audio', parentId: 1 },
-];
+type Menu = {
+  id: number;
+  name: string;
+  slug: string;
+  subMenu: Menu[] | null;
+};
+
+function arrangeCategories(categories: Category[]) {
+  const rootCategories = categories.filter((c) => c.parentId === null);
+  const menu: Menu[] = [];
+
+  for (const category of rootCategories) {
+    const childCategories = categories.filter((c) => c.parentId === category.id);
+    menu.push({
+      id: category.id,
+      name: category.name,
+      slug: category.slug,
+      subMenu: childCategories.map((c) => ({
+        id: c.id,
+        name: c.name,
+        slug: c.slug,
+        subMenu: null,
+      })),
+    });
+  }
+
+  return menu;
+}
 
 export async function listCategories(_req: Request, res: Response): Promise<void> {
-  sendSuccess(res, dummyCategories);
+  const categories: Category[] = await db.query.categories.findMany();
+  const menu = arrangeCategories(categories);
+  sendSuccess(res, menu);
 }

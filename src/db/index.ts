@@ -10,4 +10,9 @@ const sqlite = new Database(env.DATABASE_URL);
 sqlite.pragma('journal_mode = WAL');
 sqlite.pragma('foreign_keys = ON');
 
-export const db = drizzle(sqlite, { schema });
+export const db = drizzle(sqlite, { schema, logger: true });
+
+export const { products, categories } = schema;
+export type Category = typeof schema.categories.$inferSelect;
+export type Product = typeof schema.products.$inferSelect;
+export type NewProduct = typeof schema.products.$inferInsert;
