@@ -1,6 +1,7 @@
 import { and, asc, count, desc, eq, gte, inArray, lte, or, sql, type SQL } from 'drizzle-orm';
 import { db } from '../../db/index.js';
-import { categories, productImages, products } from '../../db/schema.js';
+import { ApiError } from '../../middlewares/error.middleware.js';
+import { categories, productImages, products, productVariants } from '../../db/schema.js';
 import type { ListProductsQuery } from './products.types.js';
 
 const SORT_COLUMNS = {
@@ -101,5 +102,44 @@ export async function listProducts(query: ListProductsQuery) {
       total,
       totalPages: Math.ceil(total / query.limit),
     },
+  };
+}
+
+export async function getProductBySlug(slug: string) {
+  // Same visibility rule as the listing: drafts/archived products are not public.
+  const product = await db.query.products.findFirst({
+    columns: {
+      id: true,
+      name: true,
+      slug: true,
+      description: true,
+      basePrice: true,
+      status: true,
+    },
+    where: and(eq(products.slug, slug), eq(products.status, 'active')),
+    with: {
+      category: { columns: { id: true, name: true, slug: true } },
+      images: {
+        columns: { id: true, url: true },
+        orderBy: [asc(productImages.position), asc(productImages.id)],
+      },
+      // Variant price/stock are authoritative; basePrice is only a display price.
+      variants: {
+        columns: { id: true, sku: true, price: true, attributes: true, stockQuantity: true },
+        orderBy: [asc(productVariants.price), asc(productVariants.id)],
+      },
+    },
+  });
+
+  if (!product) {
+    throw new ApiError(404, 'NOT_FOUND', 'Product not found');
+  }
+
+  return {
+    ...product,
+    variants: product.variants.map(({ stockQuantity, ...variant }) => ({
+      ...variant,
+      inStock: stockQuantity > 0,
+    })),
   };
 }

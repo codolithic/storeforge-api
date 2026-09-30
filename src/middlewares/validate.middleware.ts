@@ -18,3 +18,12 @@ export const validateQuery =
     res.locals.query = schema.parse(req.query);
     next();
   };
+
+// Route-params validator; stores the parsed result on res.locals.params to
+// mirror validateQuery (Express 5 types req.params values as string | string[]).
+export const validateParams =
+  (schema: ZodSchema) =>
+  (req: Request, res: Response, next: NextFunction): void => {
+    res.locals.params = schema.parse(req.params);
+    next();
+  };

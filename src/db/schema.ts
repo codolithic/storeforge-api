@@ -248,6 +248,10 @@ export const productVariantsRelations = relations(productVariants, ({ one }) => 
   product: one(products, { fields: [productVariants.productId], references: [products.id] }),
 }));
 
+export const productImagesRelations = relations(productImages, ({ one }) => ({
+  product: one(products, { fields: [productImages.productId], references: [products.id] }),
+}));
+
 export const cartsRelations = relations(carts, ({ one, many }) => ({
   user: one(users, { fields: [carts.userId], references: [users.id] }),
   items: many(cartItems),

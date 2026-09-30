@@ -77,7 +77,7 @@ Routes are mounted at **`/api`** (e.g. `/api/products`, `/api/auth/login`), not 
 **Implementation status** — being filled in incrementally:
 
 - `auth` — full service layer; the reference pattern: `types.ts` (Zod schemas) → `service.ts` (logic) → `controller.ts` (calls the service) → `routes.ts` (wires middleware).
-- `products` — `GET /products` is real (`products.service.ts`: pagination, category-slug filter including subcategories, name search, `basePrice` range, sort; lists only `status = 'active'`). `GET /products/:slug` still returns dummy data.
+- `products` — `GET /products` is real (`products.service.ts`: pagination, category-slug filter including subcategories, name search, `basePrice` range, sort; lists only `status = 'active'`). `GET /products/:slug` is real too (category, images, and variants with `inStock` instead of the raw stock count; 404 for non-active products).
 - `categories` — `GET /categories` is real but queries `db` directly from the controller (no service yet); it builds a two-level menu from `parentId`.
 - `cart`, `orders`, `admin` — return **dummy JSON** marked with `// TODO: replace with real Drizzle queries`. `admin` has no controller at all; its dummy handlers are inline in `admin.routes.ts` and should be extracted into `admin.controller.ts` + `admin.service.ts` when implemented.
 
@@ -108,7 +108,7 @@ Routes are mounted at **`/api`** (e.g. `/api/products`, `/api/auth/login`), not 
 - Validate input with a Zod schema in the module's `*.types.ts` and export the inferred type (`z.infer`) for the service to consume:
   - bodies: `validateBody(schema)` — replaces `req.body` with the parsed result.
   - query strings: `validateQuery(schema)` — Express 5's `req.query` is a read-only getter that re-parses on every access, so the parsed result goes on **`res.locals.query`**; read it from there (cast to the inferred type), not from `req.query`. Use `z.coerce` for numbers, since query values arrive as strings.
-  - There is no params validator yet — add one to `validate.middleware.ts` rather than validating inline.
+  - route params: `validateParams(schema)` — stores the parsed result on **`res.locals.params`** (Express 5 types `req.params` values as `string | string[]`, so reading them raw doesn't type-check).
 - Routes requiring login use `authenticate`; admin-only routes chain `authenticate, authorize('admin')`. Apply them as `router.use(...)` at the top of the module's routes file when the whole resource is protected, rather than per-route.
 - `authRateLimiter` (15 min / 10 requests) is applied per-route on `/auth/register` and `/auth/login` only.
 - **ESM: every relative import needs an explicit `.js` extension** (`./auth.service.js`), even though the source file is `.ts`. `NodeNext` resolution will not find extensionless imports.

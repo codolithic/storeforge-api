@@ -18,3 +18,9 @@ export const listProductsQuerySchema = z
   );
 
 export type ListProductsQuery = z.infer<typeof listProductsQuerySchema>;
+
+export const productSlugParamsSchema = z.object({
+  slug: z.string().trim().min(1).max(200),
+});
+
+export type ProductSlugParams = z.infer<typeof productSlugParamsSchema>;
