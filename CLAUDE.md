@@ -19,7 +19,7 @@ All dependencies use the latest stable version as of 30-Sep-2026; `npx tsc --noE
 - Pino 10 / pino-http 11 are installed but **not wired up** (`pinoHttp()` is commented out in `app.ts`); logging is `console.*`, and `db/index.ts` enables Drizzle's `logger: true`, so every SQL query is printed
 - dotenv 18 for env loading
 - Prettier 3.9 (config in `.prettierrc`)
-- Vitest 5 + supertest 7.3 as the (as yet unused) test stack
+- Vitest 5 + supertest 7.3 for tests
 
 ## Commands
 
@@ -36,18 +36,23 @@ npm run typecheck    # type-check only
 npm run format       # format all the files
 ```
 
-Always run `npm run typecheck` after making changes before considering a task done — it is the only automated check in the repo. There is no linter. Prettier is configured (single quotes, semicolons, trailing commas, `printWidth: 100`) but not enforced, and a few files (`error.middleware.ts`, `auth.service.ts`, `utils/jwt.ts`) aren't formatted yet — run Prettier on the files you change, not repo-wide, to keep diffs focused.
+Always run `npm run typecheck` and `npm test` after making changes before considering a task done. There is no linter. Prettier is configured (single quotes, semicolons, trailing commas, `printWidth: 100`) but not enforced, and a few files (`error.middleware.ts`, `auth.service.ts`, `utils/jwt.ts`) aren't formatted yet — run Prettier on the files you change, not repo-wide, to keep diffs focused.
 
 ### Tests
 
-`vitest` 5 and `supertest` are installed, but **no test files exist yet** and there is no `vitest.config.ts`, so `npm test` currently exits 1 with "No test files found". When adding the first tests, run a single file or case with:
+Vitest 5 + supertest. **All tests live in the top-level `tests/` folder, separate from `src/`, and test at the route level only**: one `tests/<resource>.test.ts` per resource, driving the real `app` over HTTP with supertest (no `listen`). Don't add per-file unit tests for controllers, services, schemas, or middleware — cover that behaviour through the routes (e.g. schema rules as 400 `VALIDATION_ERROR` cases). Run one file or one case with:
 
 ```bash
-npx vitest run src/modules/auth/auth.service.test.ts
-npx vitest run -t "rejects an expired refresh token"
+npx vitest run tests/products.test.ts
+npx vitest run -t "treats % as a literal character"
 ```
 
-Note that importing anything that reaches `src/config/env.ts` (which includes `db/index.ts`) parses the environment at import time and throws if `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET` are missing — tests need those set.
+How the setup works (`vitest.config.ts` + `tests/`):
+
+- `test.env` sets `NODE_ENV=test`, dummy JWT secrets, and `DATABASE_URL=:memory:` before any import, because `config/env.ts` and `db/index.ts` read the environment and open the DB at import time. `dotenv` doesn't override already-set vars, so `.env` never leaks into tests.
+- Test files run isolated, so each file gets its **own fresh in-memory DB**. Each file calls `migrateTestDb()` from `tests/helpers/db.ts` (builds the schema from the committed `drizzle/` migrations; throws if `DATABASE_URL` isn't `:memory:`) and seeds a fixture in `beforeAll`. The Drizzle SQL logger is off under `NODE_ENV=test`.
+- Use small hand-built fixtures in `tests/fixtures/` (e.g. `catalog.ts`), never `data/*.json` — it's gitignored and too large to assert against. Assertions depend on exact fixture rows, so changing a fixture means updating expectations.
+- Tests import source as `../src/...js`. `tests/tsconfig.json` extends the root config so `npm run typecheck` (`tsc --noEmit && tsc -p tests`) type-checks `tests/` too — Vitest itself doesn't type-check. `npm run build` only compiles `src/`, so tests never land in `dist/`.
 
 ## Architecture
 

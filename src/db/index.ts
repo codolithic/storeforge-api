@@ -10,7 +10,7 @@ const sqlite = new Database(env.DATABASE_URL);
 sqlite.pragma('journal_mode = WAL');
 sqlite.pragma('foreign_keys = ON');
 
-export const db = drizzle(sqlite, { schema, logger: true });
+export const db = drizzle(sqlite, { schema, logger: env.NODE_ENV !== 'test' });
 
 export const {
   users,
