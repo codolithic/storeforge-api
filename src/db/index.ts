@@ -12,7 +12,21 @@ sqlite.pragma('foreign_keys = ON');
 
 export const db = drizzle(sqlite, { schema, logger: true });
 
-export const { products, categories } = schema;
+export const {
+  users,
+  addresses,
+  categories,
+  products,
+  productImages,
+  productVariants,
+  carts,
+  cartItems,
+  orders,
+  orderItems,
+  payments,
+  inventoryReservations,
+  reviews,
+} = schema;
 export type Category = typeof schema.categories.$inferSelect;
 export type Product = typeof schema.products.$inferSelect;
 export type NewProduct = typeof schema.products.$inferInsert;

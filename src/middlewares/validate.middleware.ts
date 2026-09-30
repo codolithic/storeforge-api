@@ -9,3 +9,12 @@ export const validateBody =
     req.body = schema.parse(req.body);
     next();
   };
+
+// Query-string validator. Express 5 makes req.query a read-only getter, so the
+// parsed result is stored on res.locals.query instead of replacing req.query.
+export const validateQuery =
+  (schema: ZodSchema) =>
+  (req: Request, res: Response, next: NextFunction): void => {
+    res.locals.query = schema.parse(req.query);
+    next();
+  };

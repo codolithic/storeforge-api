@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Tech Stack
 
-All dependencies uses the latest stable version as of 30-Sep-2026; `npx tsc --noEmit`, `npm run build`, and a runtime smoke test pass on this set.
+All dependencies use the latest stable version as of 30-Sep-2026; `npx tsc --noEmit`, `npm run build`, and a runtime smoke test pass on this set.
 
 - Node.js `engines: >=24` (developed on v26), ESM only (`"type": "module"`)
 - Express 5.2, with helmet 8.3, cors 2.8, cookie-parser 1.4, express-rate-limit 8.7
@@ -16,7 +16,9 @@ All dependencies uses the latest stable version as of 30-Sep-2026; `npx tsc --no
 - Drizzle ORM 0.45 + drizzle-kit 0.31, on better-sqlite3 13
 - Zod 4.6 for validation
 - jsonwebtoken 9.0 (access tokens) + argon2 0.45 (password hashing)
-- Pino 10 / pino-http 11 for request logging, dotenv 18 for env loading
+- Pino 10 / pino-http 11 are installed but **not wired up** (`pinoHttp()` is commented out in `app.ts`); logging is `console.*`, and `db/index.ts` enables Drizzle's `logger: true`, so every SQL query is printed
+- dotenv 18 for env loading
+- Prettier 3.9 (config in `.prettierrc`)
 - Vitest 5 + supertest 7.3 as the (as yet unused) test stack
 
 ## Commands
@@ -30,10 +32,11 @@ npm run db:migrate   # apply migrations to the SQLite file
 npm run db:studio    # open Drizzle Studio to inspect data
 npm run db:seed      # load all data/*.json into the database (idempotent)
 npm test             # vitest run
-npx tsc --noEmit     # type-check only
+npm run typecheck    # type-check only
+npm run format       # format all the files
 ```
 
-Always run `npx tsc --noEmit` after making changes before considering a task done — it is the only automated check in the repo. There is **no linter or formatter configured** (no ESLint/Prettier); match the surrounding style by hand.
+Always run `npm run typecheck` after making changes before considering a task done — it is the only automated check in the repo. There is no linter. Prettier is configured (single quotes, semicolons, trailing commas, `printWidth: 100`) but not enforced, and a few files (`error.middleware.ts`, `auth.service.ts`, `utils/jwt.ts`) aren't formatted yet — run Prettier on the files you change, not repo-wide, to keep diffs focused.
 
 ### Tests
 
@@ -44,7 +47,7 @@ npx vitest run src/modules/auth/auth.service.test.ts
 npx vitest run -t "rejects an expired refresh token"
 ```
 
-Note that importing anything that reaches `src/config/env.ts` parses the environment at import time and throws if `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET` are missing — tests need those set.
+Note that importing anything that reaches `src/config/env.ts` (which includes `db/index.ts`) parses the environment at import time and throws if `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET` are missing — tests need those set.
 
 ## Architecture
 
@@ -54,27 +57,37 @@ Layered, feature-first structure:
 src/
   config/env.ts       zod-parsed env, evaluated at import time, fails fast on boot
   db/schema.ts        all Drizzle tables + relations
-  db/index.ts         better-sqlite3 client (WAL + foreign_keys ON), exports `db`
+  db/index.ts         better-sqlite3 client (WAL + foreign_keys ON), exports `db` and all tables
+  db/seed*.ts         related to utility code to seed the database
   middlewares/        auth, error, rateLimiter, validate
   modules/            one folder per resource: auth, products, categories, cart, orders, admin
-  routes/index.ts     aggregates module routers, mounted at /api/v1 by app.ts
+  routes/index.ts     aggregates module routers, mounted at /api by app.ts
   utils/              apiResponse, jwt, password
   app.ts              express app + global middleware + /health
   server.ts           entry point (app.listen)
 ```
 
+Routes are mounted at **`/api`** (e.g. `/api/products`, `/api/auth/login`), not a versioned prefix.
+
 **Request pipeline:** `routes` → `controller` (HTTP only, thin) → `service` (business logic, Drizzle) → `db`.
 
 **File naming inside a module is prefixed, not bare:** `auth.routes.ts`, `auth.controller.ts`, `auth.service.ts`, `auth.types.ts` — not `routes.ts`. Follow this when adding files.
 
-Only `auth` has a full service layer wired to the DB. `products`, `categories`, `cart`, `orders`, and `admin` intentionally return **dummy JSON** marked with `// TODO: replace with real Drizzle queries` — this is expected and being filled in incrementally. `admin` has no controller at all; its dummy handlers are inline in `admin.routes.ts` and should be extracted into `admin.controller.ts` + `admin.service.ts` when implemented. Use the `auth` module as the reference pattern: `types.ts` (Zod schemas) → `service.ts` (logic) → `controller.ts` (calls the service) → `routes.ts` (wires middleware).
+**Implementation status** — being filled in incrementally:
+
+- `auth` — full service layer; the reference pattern: `types.ts` (Zod schemas) → `service.ts` (logic) → `controller.ts` (calls the service) → `routes.ts` (wires middleware).
+- `products` — `GET /products` is real (`products.service.ts`: pagination, category-slug filter including subcategories, name search, `basePrice` range, sort; lists only `status = 'active'`). `GET /products/:slug` still returns dummy data.
+- `categories` — `GET /categories` is real but queries `db` directly from the controller (no service yet); it builds a two-level menu from `parentId`.
+- `cart`, `orders`, `admin` — return **dummy JSON** marked with `// TODO: replace with real Drizzle queries`. `admin` has no controller at all; its dummy handlers are inline in `admin.routes.ts` and should be extracted into `admin.controller.ts` + `admin.service.ts` when implemented.
 
 ## Domain model (read before touching catalog/cart/order code)
 
 - **Price and stock live on `product_variants`, never on `products`.** `products.basePrice` is a display/starting price only; `product_variants.price` and `product_variants.stockQuantity` are authoritative. `cart_items` and `order_items` reference `variantId`, not `productId`.
-- **Never live-join order data to current product/price.** `order_items` snapshots `productNameSnapshot` and `unitPrice` at purchase time; `cart_items` snapshots `unitPriceSnapshot`. Preserve this when writing cart/order logic.
+- **Never live-join order data to current product/price.** `order_items` snapshots `productName`, `variantAttributes`, and `unitPrice` at purchase time; `cart_items` snapshots `unitPriceSnapshot`. Preserve this when writing cart/order logic.
+- **Categories are a self-referencing tree** via nullable `categories.parentId`; the data is two levels deep (10 roots) and the menu builder assumes that. Products are attached to both root and child categories.
 - **Carts support guests:** `carts.userId` is nullable and `carts.sessionId` identifies an anonymous cart. Current cart routes are all behind `authenticate`, so the guest path is modelled but not yet wired up.
 - **`inventory_reservations`** are short-lived stock holds taken during checkout and released on failure/timeout — checkout logic should create them rather than decrementing `stockQuantity` directly.
+- `payments` and `reviews` tables exist in the schema but nothing uses them yet.
 - **Column types:** timestamps are `text` ISO-8601 strings defaulting to `current_timestamp`, and all money is `real` (SQLite float). Stay consistent with both rather than introducing a second convention.
 
 ## Auth flow
@@ -89,22 +102,26 @@ Only `auth` has a full service layer wired to the DB. `products`, `categories`, 
 ## Conventions
 
 - All route handlers are `async`. Express 5 forwards rejected promises (and synchronous throws) to `errorHandler`, so **no manual try/catch or async wrapper** anywhere.
-- Throw `ApiError(status, code, message)` (from `middlewares/error.middleware.ts`) for expected failures. `errorHandler` also maps `ZodError` → 400 `VALIDATION_ERROR` automatically. Prefer throwing `ApiError` over calling `sendError`; some dummy controllers still use `sendError` and should switch when they get real logic.
-- Every response uses the shared envelope from `utils/apiResponse.ts` — `sendSuccess(res, data, status?)` → `{ success, data }`, errors → `{ success: false, error: { code, message } }`. Don't hand-roll response shapes.
-- Validate request bodies with a Zod schema in the module's `*.types.ts`, applied via `validateBody(schema)`; export the inferred type (`z.infer`) for the service to consume. There is no query/params validator yet — add one to `validate.middleware.ts` rather than validating inline.
+- Throw `ApiError(status, code, message)` (from `middlewares/error.middleware.ts`) for expected failures. `errorHandler` also maps `ZodError` → 400 `VALIDATION_ERROR` (with per-field `details`) automatically. Prefer throwing `ApiError` over calling `sendError`; some controllers still use `sendError` and should switch when they get real logic.
+- Every response uses the shared envelope from `utils/apiResponse.ts` — `sendSuccess(res, data, status?)` → `{ success, data }`, errors → `{ success: false, error: { code, message } }`. Don't hand-roll response shapes. Paginated lists return `{ items, pagination: { page, limit, total, totalPages } }`.
+- Validate input with a Zod schema in the module's `*.types.ts` and export the inferred type (`z.infer`) for the service to consume:
+  - bodies: `validateBody(schema)` — replaces `req.body` with the parsed result.
+  - query strings: `validateQuery(schema)` — Express 5's `req.query` is a read-only getter that re-parses on every access, so the parsed result goes on **`res.locals.query`**; read it from there (cast to the inferred type), not from `req.query`. Use `z.coerce` for numbers, since query values arrive as strings.
+  - There is no params validator yet — add one to `validate.middleware.ts` rather than validating inline.
 - Routes requiring login use `authenticate`; admin-only routes chain `authenticate, authorize('admin')`. Apply them as `router.use(...)` at the top of the module's routes file when the whole resource is protected, rather than per-route.
 - `authRateLimiter` (15 min / 10 requests) is applied per-route on `/auth/register` and `/auth/login` only.
 - **ESM: every relative import needs an explicit `.js` extension** (`./auth.service.js`), even though the source file is `.ts`. `NodeNext` resolution will not find extensionless imports.
-- `noUncheckedIndexedAccess` is on, so array/index access is `T | undefined` — destructured Drizzle `.returning()` results need a guard (see `auth.service.ts` `if (!user) throw ...`).
+- `noUncheckedIndexedAccess` is on, so array/index access is `T | undefined` — destructured Drizzle `.returning()` / aggregate results need a guard or default (see `auth.service.ts` `if (!user) throw ...`).
 - Strip `passwordHash` before returning a user (`sanitizeUser` in `auth.service.ts`).
 
 ## Database
 
-- Schema lives entirely in `src/db/schema.ts`. After editing it, run `npm run db:generate` then `npm run db:migrate` — never hand-write SQL migrations.
+- Schema lives entirely in `src/db/schema.ts`. After editing it, run `npm run db:generate` then `npm run db:migrate` — never hand-write SQL migrations. `drizzle.config.ts` hardcodes `./data/dev.db` rather than reading `DATABASE_URL`.
 - Adding a new table also means adding its `relations(...)` block if it needs `db.query.<table>` with `with:`, and the table must be exported from `schema.ts` (the whole module is passed to `drizzle(sqlite, { schema })`).
-- Seeding: `src/db/seed.ts` (`npm run db:seed`) loads `data/categories.json`. It opens its own better-sqlite3 connection from `DATABASE_URL` rather than importing `config/env.ts`, so it doesn't demand JWT secrets just to open the DB; it preserves explicit ids and upserts on conflict, so re-running is safe and won't break `products.category_id` references.
-- `src/db/seed-products.ts` (`npm run db:seed:products`) loads `data/products.json` (1271 rows) the same way. **Order matters:** `products.category_id` is a real FK, so `db:seed` must run before `db:seed:products`; the script pre-checks that every referenced category id exists and fails with a pointer to `db:seed` rather than surfacing a bare "FOREIGN KEY constraint failed".
-- `data/categories.json` still carries a `parentId` field the schema no longer has; the categories seeder validates it, ignores it, and warns.
+- **Seeding** (`npm run db:seed` → `src/db/seed.ts`) loads 10 files from `data/` in FK-dependency order: users → addresses → categories → products → product_images → product_variants → carts → cart_items → orders → order_items. Each file is validated with a Zod schema in `seed-schema.ts`, then written by the generic `seedTable()` in `seed-table.ts`, which upserts on `id` inside a transaction, so re-running is safe and explicit ids are preserved.
+  - `seed-table.ts` opens its own better-sqlite3 connection per table and does **not** import `config/env.ts` (so no JWT secrets needed) — and it doesn't load dotenv either, so it uses `process.env.DATABASE_URL` or `./data/dev.db`, ignoring `.env`.
+  - `seed.ts` catches errors and only logs `❌ Seeding Failed <message>`, **exiting 0** — check the output, not the exit code. A failure partway leaves the earlier tables seeded.
+  - Adding a seeded table means: a schema in `seed-schema.ts`, a source file in `data/`, and a `seedTable` call in the correct FK position in `seed.ts`.
 - Beyond that, do not seed data unless explicitly asked.
 
 ## Environment
@@ -120,8 +137,8 @@ Optional, with defaults: `NODE_ENV=development`, `PORT=3000`, `DATABASE_URL=./da
 
 ## Known repo hygiene gaps
 
-- `.gitignore` currently ignores `drizzle/` wholesale, so **generated migrations are not committed** — `db:migrate` can't reproduce the schema on a fresh clone. Ignore only `drizzle/` build noise, not the migration SQL, if this is meant to be shareable.
-- `.gitignore` does **not** cover `.env`, `dist/`, or `*.db-shm`/`*.db-wal`. Don't commit those regardless.
+- **`.env` is tracked in git** and not in `.gitignore`. Treat whatever secrets it holds as exposed; it needs `git rm --cached .env`, a `.gitignore` entry, and rotated secrets. Never commit changes to it.
+- `.gitignore` ignores `data/` wholesale, so **the seed JSON files and `dev.db` are not committed** — `npm run db:seed` can't run on a fresh clone. It also ignores `drizzle/` wholesale, so **generated migrations are not committed** and `db:migrate` can't reproduce the schema either. Ignore only `data/*.db*` and drizzle build noise if this is meant to be shareable.
 - `npm audit` reports 4 moderate advisories, all from one transitive chain: `drizzle-kit` → `@esbuild-kit/esm-loader` → `esbuild <=0.24.2` (dev-server request forgery). It is dev-tooling only and `npm audit fix --force` would downgrade drizzle-kit to 0.18.1, so it is knowingly left alone — don't "fix" it.
 - `src/.DS_Store` and `src/modules/.DS_Store` are still tracked despite the `.DS_Store` ignore rule (ignore rules don't apply to already-tracked files); they need `git rm --cached` to actually go away.
 

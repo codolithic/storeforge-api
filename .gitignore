@@ -3,3 +3,4 @@ drizzle
 data
 .DS_Store
 dist
+.env

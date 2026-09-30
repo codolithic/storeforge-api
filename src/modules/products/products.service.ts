@@ -1,0 +1,105 @@
+import { and, asc, count, desc, eq, gte, inArray, lte, or, sql, type SQL } from 'drizzle-orm';
+import { db } from '../../db/index.js';
+import { categories, productImages, products } from '../../db/schema.js';
+import type { ListProductsQuery } from './products.types.js';
+
+const SORT_COLUMNS = {
+  name: products.name,
+  price: products.basePrice,
+  category: categories.name,
+};
+
+// Escape LIKE wildcards so user input is matched literally.
+function toLikePattern(term: string) {
+  return `%${term.replace(/[\\%_]/g, '\\$&')}%`;
+}
+
+export async function listProducts(query: ListProductsQuery) {
+  // Only published products are visible in the public catalog.
+  const conditions: SQL[] = [eq(products.status, 'active')];
+
+  if (query.category) {
+    const selectedCategory = db
+      .select({ id: categories.id })
+      .from(categories)
+      .where(eq(categories.slug, query.category));
+
+    const matchingCategoryIds = db
+      .select({ id: categories.id })
+      .from(categories)
+      .where(
+        or(eq(categories.slug, query.category), inArray(categories.parentId, selectedCategory)),
+      );
+    conditions.push(inArray(products.categoryId, matchingCategoryIds));
+  }
+  if (query.search) {
+    conditions.push(sql`${products.name} LIKE ${toLikePattern(query.search)} ESCAPE '\\'`);
+  }
+  if (query.min_price !== undefined) {
+    conditions.push(gte(products.basePrice, query.min_price));
+  }
+  if (query.max_price !== undefined) {
+    conditions.push(lte(products.basePrice, query.max_price));
+  }
+
+  const where = and(...conditions);
+  const direction = query.order === 'desc' ? desc : asc;
+
+  const rows = await db
+    .select({
+      id: products.id,
+      name: products.name,
+      slug: products.slug,
+      description: products.description,
+      basePrice: products.basePrice,
+      category: categories.name,
+      status: products.status,
+    })
+    .from(products)
+    .leftJoin(categories, eq(categories.id, products.categoryId))
+    .where(where)
+    // Tie-break on id so pages stay stable when sort values repeat.
+    .orderBy(direction(SORT_COLUMNS[query.sort]), asc(products.id))
+    .limit(query.limit)
+    .offset((query.page - 1) * query.limit);
+
+  const [{ total } = { total: 0 }] = await db
+    .select({ total: count() })
+    .from(products)
+    .where(where);
+
+  const images =
+    rows.length > 0
+      ? await db
+          .select({
+            id: productImages.id,
+            productId: productImages.productId,
+            url: productImages.url,
+          })
+          .from(productImages)
+          .where(
+            inArray(
+              productImages.productId,
+              rows.map((r) => r.id),
+            ),
+          )
+          .orderBy(asc(productImages.position), asc(productImages.id))
+      : [];
+
+  const imagesByProduct = new Map<number, Array<{ id: number; url: string }>>();
+  for (const { productId, ...image } of images) {
+    const list = imagesByProduct.get(productId) ?? [];
+    list.push(image);
+    imagesByProduct.set(productId, list);
+  }
+
+  return {
+    items: rows.map((row) => ({ ...row, images: imagesByProduct.get(row.id) ?? [] })),
+    pagination: {
+      page: query.page,
+      limit: query.limit,
+      total,
+      totalPages: Math.ceil(total / query.limit),
+    },
+  };
+}
