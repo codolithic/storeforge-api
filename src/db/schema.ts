@@ -169,7 +169,8 @@ export const orderItems = sqliteTable('order_items', {
   variantId: integer('variant_id')
     .notNull()
     .references(() => productVariants.id),
-  productNameSnapshot: text('product_name_snapshot').notNull(),
+  productName: text('product_name').notNull(),
+  variantAttributes: text('variant_attributes', { mode: 'json' }).$type<Record<string, string>>(),
   unitPrice: real('unit_price').notNull(),
   quantity: integer('quantity').notNull(),
 });
