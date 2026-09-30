@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Tech Stack
 
-All dependencies were bumped to their latest stable releases on 2026-09-27; `npx tsc --noEmit`, `npm run build`, and a runtime smoke test pass on this set.
+All dependencies uses the latest stable version as of 30-Sep-2026; `npx tsc --noEmit`, `npm run build`, and a runtime smoke test pass on this set.
 
 - Node.js `engines: >=24` (developed on v26), ESM only (`"type": "module"`)
 - Express 5.2, with helmet 8.3, cors 2.8, cookie-parser 1.4, express-rate-limit 8.7
@@ -28,8 +28,7 @@ npm start            # run compiled server (node dist/server.js)
 npm run db:generate  # generate a Drizzle migration from src/db/schema.ts
 npm run db:migrate   # apply migrations to the SQLite file
 npm run db:studio    # open Drizzle Studio to inspect data
-npm run db:seed      # load data/categories.json into the categories table (idempotent)
-npm run db:seed:products  # load data/products.json into products (run db:seed first)
+npm run db:seed      # load all data/*.json into the database (idempotent)
 npm test             # vitest run
 npx tsc --noEmit     # type-check only
 ```
