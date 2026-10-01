@@ -122,6 +122,10 @@ Routes are mounted at **`/api`** (e.g. `/api/products`, `/api/auth/login`), not 
   - Adding a seeded table means: a schema in `seed-schema.ts`, a source file in `data/`, and a `seedTable` call in the correct FK position in `seed.ts`.
 - Beyond that, do not seed data unless explicitly asked.
 
+## Database tables
+
+For a guide on database tables, columns and relations between tables follow @db-schema.md.
+
 ## Environment
 
 There is currently **no `.env.example` in the repo** — create `.env` with at least:

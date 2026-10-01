@@ -94,6 +94,15 @@ const orderItemSchema = z.object({
   quantity: z.number().int().positive(),
 });
 
+const reviewSchema = z.object({
+  id: z.number().int().positive(),
+  productId: z.number().int().positive(),
+  userId: z.number().int().positive(),
+  rating: z.number().int().positive(),
+  comment: z.string().nullable().default(null),
+  createdAt: z.string().nonempty(),
+});
+
 export const userSeedFileSchema = z.array(userSeedSchema).min(1);
 export const addressSeedFileSchema = z.array(addressSeedSchema).min(1);
 export const categorySeedFileSchema = z.array(categorySeedSchema).min(1);
@@ -104,3 +113,4 @@ export const cartFileSchema = z.array(cartSchema).min(1);
 export const cartItemFileSchema = z.array(cartItemSchema).min(1);
 export const orderFileSchema = z.array(orderSchema).min(1);
 export const orderItemFileSchema = z.array(orderItemSchema).min(1);
+export const reviewFileSchema = z.array(reviewSchema).min(1);

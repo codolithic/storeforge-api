@@ -10,6 +10,7 @@ import {
   cartItemFileSchema,
   orderFileSchema,
   orderItemFileSchema,
+  reviewFileSchema,
 } from './seed-schema.js';
 import { seedTable } from './seed-table.js';
 import {
@@ -23,6 +24,7 @@ import {
   cartItems,
   orders,
   orderItems,
+  reviews,
 } from './schema.js';
 
 const USERS_SOURCE = new URL('../../data/users.json', import.meta.url);
@@ -35,6 +37,7 @@ const CARTS_SOURCE = new URL('../../data/carts.json', import.meta.url);
 const CART_ITEMS_SOURCE = new URL('../../data/cart_items.json', import.meta.url);
 const ORDERS_SOURCE = new URL('../../data/orders.json', import.meta.url);
 const ORDER_ITEMS_SOURCE = new URL('../../data/order_items.json', import.meta.url);
+const REVIEWS_SOURCE = new URL('../../data/reviews.json', import.meta.url);
 
 async function readSeedFile(sourceFile: URL) {
   const raw: unknown = JSON.parse(await readFile(sourceFile, 'utf8'));
@@ -101,6 +104,12 @@ try {
   const orderItemsData = orderItemFileSchema.parse(orderItemsRawData);
   console.log('Seeding order items...');
   await seedTable(orderItems, orderItemsData as any, orderItems.id);
+
+  // Reviews
+  const reviewsRawData = await readSeedFile(REVIEWS_SOURCE);
+  const reviewsData = reviewFileSchema.parse(reviewsRawData);
+  console.log('Seeding reviews...');
+  await seedTable(reviews, reviewsData, reviews.id);
 } catch (err: unknown) {
   if (err instanceof Error) {
     console.error('❌ Seeding Failed', err.message);
