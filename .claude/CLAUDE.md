@@ -43,6 +43,7 @@ Always run `npm run typecheck` and `npm test` after making changes before consid
 Vitest 5 + supertest. **All tests live in the top-level `tests/` folder, separate from `src/`, and test at the route level only**: one `tests/<resource>.test.ts` per resource, driving the real `app` over HTTP with supertest (no `listen`). Don't add per-file unit tests for controllers, services, schemas, or middleware — cover that behaviour through the routes (e.g. schema rules as 400 `VALIDATION_ERROR` cases). Run one file or one case with:
 
 ```bash
+npm test
 npx vitest run tests/products.test.ts
 npx vitest run -t "treats % as a literal character"
 ```
@@ -57,22 +58,7 @@ How the setup works (`vitest.config.ts` + `tests/`):
 
 ## Architecture
 
-Layered, feature-first structure:
-
-- src/config/env.ts - zod-parsed env, evaluated at import time, fails fast on boot
-- src/db/schema.ts - all Drizzle tables + relations
-- src/db/index.ts - better-sqlite3 client (WAL + foreign_keys ON), exports `db` and all tables
-- src/db/seed-*.ts - related to utility code to seed the database
-- src/middlewares/ - auth, error, rateLimiter, validate
-- src/modules/ - one folder per resource: auth, products, categories, cart, orders, admin
-  - *.controller.ts - a bridge between the route and the business layer
-  - *.routes.ts - provides a routes for the specific module
-  - *.service.ts - implements a business layer
-  - *.types.ts - provides a types required by the module controller, routes and service
-- src/routes/index.ts - aggregates module routers, mounted at /api by app.ts
-- src/utils/ - apiResponse, jwt, password
-- src/app.ts - express app + global middleware + /health
-- src/server.ts - entry point (app.listen)
+Follow @folder-structure.md for directories and files structure.
 
 Routes are mounted at **`/api`** (e.g. `/api/products`, `/api/auth/login`), not a versioned prefix.
 
@@ -84,7 +70,7 @@ Routes are mounted at **`/api`** (e.g. `/api/products`, `/api/auth/login`), not 
 
 - `auth` — full service layer; the reference pattern: `types.ts` (Zod schemas) → `service.ts` (logic) → `controller.ts` (calls the service) → `routes.ts` (wires middleware).
 - `products` — `GET /products` is real (`products.service.ts`: pagination, category-slug filter including subcategories, name search, `basePrice` range, sort; lists only `status = 'active'`). `GET /products/:slug` is real too (category, images, and variants with `inStock` instead of the raw stock count; 404 for non-active products).
-- `categories` — `GET /categories` is real but queries `db` directly from the controller (no service yet); it builds a two-level menu from `parentId`.
+- `categories` — `GET /categories` is real and controller calls categories service to list categories; the categories service builds a two-level menu from `parentId`.
 - `cart`, `orders`, `admin` — return **dummy JSON** marked with `// TODO: replace with real Drizzle queries`. `admin` has no controller at all; its dummy handlers are inline in `admin.routes.ts` and should be extracted into `admin.controller.ts` + `admin.service.ts` when implemented.
 
 ## Domain model (read before touching catalog/cart/order code)
