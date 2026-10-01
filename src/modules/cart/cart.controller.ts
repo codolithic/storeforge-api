@@ -1,25 +1,28 @@
 import type { Request, Response } from 'express';
 import { sendSuccess } from '../../utils/apiResponse.js';
+import * as cartService from './cart.service.js';
+import type { AddCartItemInput, CartItemParams, UpdateCartItemInput } from './cart.types.js';
 
-// TODO: replace with real Drizzle queries against carts/cart_items,
-// scoped to req.user!.id, once catalog + cart data are seeded.
-const dummyCart = {
-  id: 1,
-  items: [{ id: 1, variantId: 10, quantity: 2, unitPriceSnapshot: 79.99 }],
-};
+// req.user is always set here: every cart route sits behind `authenticate`.
 
-export async function getCart(_req: Request, res: Response): Promise<void> {
-  sendSuccess(res, dummyCart);
+export async function getCart(req: Request, res: Response): Promise<void> {
+  const cart = await cartService.getCart(req.user!.id);
+  sendSuccess(res, cart);
 }
 
 export async function addItem(req: Request, res: Response): Promise<void> {
-  sendSuccess(res, { message: 'Item added to cart (dummy)', item: req.body }, 201);
+  const { created, cart } = await cartService.addItem(req.user!.id, req.body as AddCartItemInput);
+  sendSuccess(res, cart, created ? 201 : 200);
 }
 
 export async function updateItem(req: Request, res: Response): Promise<void> {
-  sendSuccess(res, { message: `Item ${req.params.id} updated (dummy)`, changes: req.body });
+  const { id } = res.locals.params as CartItemParams;
+  const cart = await cartService.updateItem(req.user!.id, id, req.body as UpdateCartItemInput);
+  sendSuccess(res, cart);
 }
 
 export async function removeItem(req: Request, res: Response): Promise<void> {
-  sendSuccess(res, { message: `Item ${req.params.id} removed (dummy)` });
+  const { id } = res.locals.params as CartItemParams;
+  const cart = await cartService.removeItem(req.user!.id, id);
+  sendSuccess(res, cart);
 }

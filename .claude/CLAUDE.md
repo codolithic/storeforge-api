@@ -71,7 +71,8 @@ Routes are mounted at **`/api`** (e.g. `/api/products`, `/api/auth/login`), not 
 - `auth` — full service layer; the reference pattern: `types.ts` (Zod schemas) → `service.ts` (logic) → `controller.ts` (calls the service) → `routes.ts` (wires middleware).
 - `products` — `GET /products` is real (`products.service.ts`: pagination, category-slug filter including subcategories, name search, `basePrice` range, sort; lists only `status = 'active'`). `GET /products/:slug` is real too (category, images, and variants with `inStock` instead of the raw stock count; 404 for non-active products).
 - `categories` — `GET /categories` is real and controller calls categories service to list categories; the categories service builds a two-level menu from `parentId`.
-- `cart`, `orders`, `admin` — return **dummy JSON** marked with `// TODO: replace with real Drizzle queries`. `admin` has no controller at all; its dummy handlers are inline in `admin.routes.ts` and should be extracted into `admin.controller.ts` + `admin.service.ts` when implemented.
+- `cart` — real (`cart.service.ts`): `GET /cart`, `POST /cart/items` (merges a repeated variant into its line), `PATCH /cart/items/:id`, `DELETE /cart/items/:id`, all scoped to the caller's newest `active` cart. Stock and a 99-unit line cap are checked on every write; mutations run as synchronous better-sqlite3 transactions so get-or-create of the cart/line can't race.
+- `orders`, `admin` — return **dummy JSON** marked with `// TODO: replace with real Drizzle queries`. `admin` has no controller at all; its dummy handlers are inline in `admin.routes.ts` and should be extracted into `admin.controller.ts` + `admin.service.ts` when implemented.
 
 ## Domain model (read before touching catalog/cart/order code)
 
