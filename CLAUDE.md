@@ -52,6 +52,7 @@ How the setup works (`vitest.config.ts` + `tests/`):
 - `test.env` sets `NODE_ENV=test`, dummy JWT secrets, and `DATABASE_URL=:memory:` before any import, because `config/env.ts` and `db/index.ts` read the environment and open the DB at import time. `dotenv` doesn't override already-set vars, so `.env` never leaks into tests.
 - Test files run isolated, so each file gets its **own fresh in-memory DB**. Each file calls `migrateTestDb()` from `tests/helpers/db.ts` (builds the schema from the committed `drizzle/` migrations; throws if `DATABASE_URL` isn't `:memory:`) and seeds a fixture in `beforeAll`. The Drizzle SQL logger is off under `NODE_ENV=test`.
 - Use small hand-built fixtures in `tests/fixtures/` (e.g. `catalog.ts`), never `data/*.json` — it's gitignored and too large to assert against. Assertions depend on exact fixture rows, so changing a fixture means updating expectations.
+- `authRateLimiter` keeps in-memory state per test file; `tests/auth.test.ts` resets it in `beforeEach` via `authRateLimiter.resetKey(ipKeyGenerator(ip))` for the loopback IPs. Do the same in any file that hits `/auth/register` or `/auth/login` more than 10 times.
 - Tests import source as `../src/...js`. `tests/tsconfig.json` extends the root config so `npm run typecheck` (`tsc --noEmit && tsc -p tests`) type-checks `tests/` too — Vitest itself doesn't type-check. `npm run build` only compiles `src/`, so tests never land in `dist/`.
 
 ## Architecture
@@ -101,8 +102,11 @@ Routes are mounted at **`/api`** (e.g. `/api/products`, `/api/auth/login`), not 
 - Access token: short-lived JWT (`ACCESS_TOKEN_TTL`, default `15m`), payload `{ sub: userId, role }`, verified per-request with no DB hit.
 - Refresh token: opaque `crypto.randomBytes(48)` hex string, **never a JWT**, SHA-256 hashed before storage in `refresh_tokens`. Never store or log the raw token.
 - The refresh token travels in an **httpOnly `refresh_token` cookie** (`sameSite: 'strict'`, `secure` in production), set by `auth.controller.ts` — not in the JSON body. `/auth/refresh` and `/auth/logout` read it from `req.cookies`.
-- Every use of a refresh token rotates it: the old row is marked `revokedAt` and a fresh pair is issued.
-- Login returns an identical error for unknown-email and wrong-password; don't split them (it leaks which emails are registered).
+- Every use of a refresh token rotates it: the old row is claimed and marked `revokedAt` in a **single conditional `UPDATE ... RETURNING`** (not find-then-update), then a fresh pair is issued. Keep it atomic — it's what stops two concurrent refreshes from both succeeding.
+- **Reuse detection:** presenting an already-revoked token (a replayed rotated token, or one used after logout) revokes _all_ of that user's live sessions and returns 401. Logout revokes only the current session.
+- Login returns an identical error for unknown-email and wrong-password; don't split them (it leaks which emails are registered). The unknown-email path also runs argon2 against a dummy hash so response _time_ doesn't leak it either — don't short-circuit it.
+- Emails are trimmed + lowercased by the Zod schema (`auth.types.ts`) before reaching the service, so all lookups assume normalised emails. Register uses `onConflictDoNothing` on `users.email` so duplicate sign-ups are a 409, never a constraint 500.
+- The `refresh_token` cookie must be cleared with the same attributes it was set with (`baseCookieOptions` in `auth.controller.ts`).
 - Don't extend access-token lifetime as a shortcut instead of using the refresh flow.
 
 ## Conventions
@@ -143,13 +147,14 @@ Optional, with defaults: `NODE_ENV=development`, `PORT=3000`, `DATABASE_URL=./da
 
 ## Known repo hygiene gaps
 
-- **`.env` is tracked in git** and not in `.gitignore`. Treat whatever secrets it holds as exposed; it needs `git rm --cached .env`, a `.gitignore` entry, and rotated secrets. Never commit changes to it.
 - `.gitignore` ignores `data/` wholesale, so **the seed JSON files and `dev.db` are not committed** — `npm run db:seed` can't run on a fresh clone. It also ignores `drizzle/` wholesale, so **generated migrations are not committed** and `db:migrate` can't reproduce the schema either. Ignore only `data/*.db*` and drizzle build noise if this is meant to be shareable.
 - `npm audit` reports 4 moderate advisories, all from one transitive chain: `drizzle-kit` → `@esbuild-kit/esm-loader` → `esbuild <=0.24.2` (dev-server request forgery). It is dev-tooling only and `npm audit fix --force` would downgrade drizzle-kit to 0.18.1, so it is knowingly left alone — don't "fix" it.
 - `src/.DS_Store` and `src/modules/.DS_Store` are still tracked despite the `.DS_Store` ignore rule (ignore rules don't apply to already-tracked files); they need `git rm --cached` to actually go away.
 
 ## What Not to Do
 
-- Don't add a new HTTP client/ORM library without checking this file first — Drizzle + `better-sqlite3` is the intended stack for this project's lifetime (SQLite is a deliberate choice for the sample; swapping to Postgres is a future step, not implied by any single task).
+- Don't add a new HTTP client/ORM library without checking this file first — Drizzle + `better-sqlite3` is the intended stack for this project's lifetime (SQLite is a deliberate choice for the sample).
 - Don't remove the dummy-data TODOs' surrounding structure (route protection, response shape) when replacing them with real logic — only the data source should change.
 - The dist folder in the root directory stores the compiled source code of the app. Do not touch this folder (including any files inside it) and do not make any changes to any of the files inside this.
+- There are seeding related files in src/db - seed-schema.ts, seed-table.ts and seed.ts. Do not touch these files.
+- If you ever need to make changes to src/db/schema.ts first ask even when you are in auto mode.
