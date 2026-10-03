@@ -168,16 +168,18 @@ SQLite database (via Drizzle ORM). 13 tables across Identity, Catalog, Cart, Ord
 
 ## inventory_reservations
 
-| Column    | Purpose                                                              |
-| --------- | -------------------------------------------------------------------- |
-| id        | Primary key                                                          |
-| variantId | Which variant has stock held                                         |
-| orderId   | Order the hold is for (nullable — held before an order fully exists) |
-| quantity  | Units reserved                                                       |
-| expiresAt | When the hold auto-releases if checkout isn't completed              |
+| Column    | Purpose                                                          |
+| --------- | ---------------------------------------------------------------- |
+| id        | Primary key                                                      |
+| variantId | Which variant has stock held                                     |
+| orderId   | Order the reservation is for                                     |
+| quantity  | Units reserved                                                   |
+| status    | `active`, `fulfilled` or `expired`                               |
+| expiresAt | Datetime when the hold auto-releases if checkout isn't completed |
 
 **Relations:** belongs to `productVariants` and optionally `orders`.
 **Purpose:** short-lived stock lock between "checkout started" and "payment confirmed," preventing overselling the same unit.
+**About Status:** The status will be `active` when reservation is created, `fulfilled` when the payment is successfully made and `expired` when the checkout process has timed out.
 
 ## reviews
 

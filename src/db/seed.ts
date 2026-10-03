@@ -11,6 +11,7 @@ import {
   orderFileSchema,
   orderItemFileSchema,
   paymentFileSchema,
+  inventoryReservationFileSchema,
   reviewFileSchema,
 } from './seed-schema.js';
 import { seedTable } from './seed-table.js';
@@ -26,8 +27,10 @@ import {
   orders,
   orderItems,
   payments,
+  inventoryReservations,
   reviews,
 } from './schema.js';
+import { readFileSync } from 'node:fs';
 
 const USERS_SOURCE = new URL('../../data/users.json', import.meta.url);
 const ADDRESSES_SOURCE = new URL('../../data/addresses.json', import.meta.url);
@@ -39,8 +42,12 @@ const CARTS_SOURCE = new URL('../../data/carts.json', import.meta.url);
 const CART_ITEMS_SOURCE = new URL('../../data/cart_items.json', import.meta.url);
 const ORDERS_SOURCE = new URL('../../data/orders.json', import.meta.url);
 const ORDER_ITEMS_SOURCE = new URL('../../data/order_items.json', import.meta.url);
-const REVIEWS_SOURCE = new URL('../../data/reviews.json', import.meta.url);
 const PAYMENTS_SOURCE = new URL('../../data/payments.json', import.meta.url);
+const INVENTORY_RESERVATIONS_SOURCE = new URL(
+  '../../data/inventory_reservations.json',
+  import.meta.url,
+);
+const REVIEWS_SOURCE = new URL('../../data/reviews.json', import.meta.url);
 
 async function readSeedFile(sourceFile: URL) {
   const raw: unknown = JSON.parse(await readFile(sourceFile, 'utf8'));
@@ -113,6 +120,14 @@ try {
   const paymentsData = paymentFileSchema.parse(paymentsRawData);
   console.log('Seeding payments...');
   await seedTable(payments, paymentsData, payments.id);
+
+  // Inventory reservations
+  const inventoryReservationsRowData = await readSeedFile(INVENTORY_RESERVATIONS_SOURCE);
+  const inventoryReservationsData = inventoryReservationFileSchema.parse(
+    inventoryReservationsRowData,
+  );
+  console.log('Seeding inventory reservations...');
+  await seedTable(inventoryReservations, inventoryReservationsData, inventoryReservations.id);
 
   // Reviews
   const reviewsRawData = await readSeedFile(REVIEWS_SOURCE);

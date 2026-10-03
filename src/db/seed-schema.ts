@@ -104,6 +104,15 @@ const paymentSchema = z.object({
   createdAt: z.string().nonempty(),
 });
 
+const inventoryReservationSchema = z.object({
+  id: z.number().int().positive(),
+  variantId: z.number().int().positive(),
+  orderId: z.number().int().positive(),
+  status: z.enum(['active', 'fulfilled', 'expired']),
+  quantity: z.number().int().positive(),
+  expiresAt: z.string().nonempty(),
+});
+
 const reviewSchema = z.object({
   id: z.number().int().positive(),
   productId: z.number().int().positive(),
@@ -124,4 +133,5 @@ export const cartItemFileSchema = z.array(cartItemSchema).min(1);
 export const orderFileSchema = z.array(orderSchema).min(1);
 export const orderItemFileSchema = z.array(orderItemSchema).min(1);
 export const reviewFileSchema = z.array(reviewSchema).min(1);
+export const inventoryReservationFileSchema = z.array(inventoryReservationSchema).min(1);
 export const paymentFileSchema = z.array(paymentSchema).min(1);

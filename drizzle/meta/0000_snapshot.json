@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "769b746d-dcb5-430e-89bd-acffbce0ea36",
+  "id": "664d9100-cac2-4bb5-97e2-9d159052e6cc",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "addresses": {
@@ -307,8 +307,16 @@
           "name": "order_id",
           "type": "integer",
           "primaryKey": false,
-          "notNull": false,
+          "notNull": true,
           "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'active'"
         },
         "quantity": {
           "name": "quantity",

@@ -42,7 +42,8 @@ CREATE UNIQUE INDEX `categories_slug_unique` ON `categories` (`slug`);--> statem
 CREATE TABLE `inventory_reservations` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
 	`variant_id` integer NOT NULL,
-	`order_id` integer,
+	`order_id` integer NOT NULL,
+	`status` text DEFAULT 'active' NOT NULL,
 	`quantity` integer NOT NULL,
 	`expires_at` text NOT NULL,
 	FOREIGN KEY (`variant_id`) REFERENCES `product_variants`(`id`) ON UPDATE no action ON DELETE no action,

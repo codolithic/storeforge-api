@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, gt, inArray, sql, sum } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gt, inArray, notExists, sql, sum } from 'drizzle-orm';
 import { db } from '../../db/index.js';
 import {
   addresses,
@@ -7,6 +7,7 @@ import {
   inventoryReservations,
   orderItems,
   orders,
+  payments,
   products,
   productVariants,
 } from '../../db/schema.js';
@@ -108,6 +109,7 @@ function reservedQuantities(tx: Tx, variantIds: number[], now: string) {
     .where(
       and(
         inArray(inventoryReservations.variantId, variantIds),
+        eq(inventoryReservations.status, 'active'),
         gt(inventoryReservations.expiresAt, now),
       ),
     )
@@ -253,15 +255,26 @@ export async function checkout(userId: number, input: CheckoutInput) {
   return getOrder(userId, orderId);
 }
 
-// Only pending (unpaid) orders can be cancelled by the customer. The status
-// change is a single conditional UPDATE so it can't race with another
-// transition, and the order's stock holds are released with it.
+// Only pending (unpaid) orders with no payment in flight can be cancelled by
+// the customer. The status change is a single conditional UPDATE so it can't
+// race with another transition, and the order's stock holds are released with it.
 export async function cancelOrder(userId: number, orderId: number) {
   db.transaction((tx) => {
     const cancelled = tx
       .update(orders)
       .set({ status: 'cancelled', updatedAt: sql`(current_timestamp)` })
-      .where(and(ownedOrder(userId, orderId), eq(orders.status, 'pending')))
+      .where(
+        and(
+          ownedOrder(userId, orderId),
+          eq(orders.status, 'pending'),
+          notExists(
+            tx
+              .select({ id: payments.id })
+              .from(payments)
+              .where(and(eq(payments.orderId, orderId), eq(payments.status, 'pending'))),
+          ),
+        ),
+      )
       .returning({ id: orders.id })
       .get();
 
@@ -273,6 +286,13 @@ export async function cancelOrder(userId: number, orderId: number) {
         .get();
       if (!existing) {
         throw new ApiError(404, 'ORDER_NOT_FOUND', 'Order not found');
+      }
+      if (existing.status === 'pending') {
+        throw new ApiError(
+          409,
+          'PAYMENT_IN_PROGRESS',
+          'A payment for this order is in progress, so it cannot be cancelled',
+        );
       }
       throw new ApiError(
         409,

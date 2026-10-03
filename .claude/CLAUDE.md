@@ -73,6 +73,7 @@ Routes are mounted at **`/api`** (e.g. `/api/products`, `/api/auth/login`), not 
 - `categories` — `GET /categories` is real and controller calls categories service to list categories; the categories service builds a two-level menu from `parentId`.
 - `cart` — real (`cart.service.ts`): `GET /cart`, `POST /cart/items` (merges a repeated variant into its line), `PATCH /cart/items/:id`, `DELETE /cart/items/:id`, all scoped to the caller's newest `active` cart. Stock and a 99-unit line cap are checked on every write; mutations run as synchronous better-sqlite3 transactions so get-or-create of the cart/line can't race.
 - `orders` — real (`orders.service.ts`): `POST /orders` checks out the caller's active cart into a `pending` order (current variant price/name/attributes snapshotted into `order_items`, stock held via 15-min `inventory_reservations` net of other live holds, cart marked `converted`, optional `shippingAddressId` else the default address; tax/shipping are 0). `GET /orders` (paginated, `status` filter), `GET /orders/:id`, and `POST /orders/:id/cancel` (pending only, conditional `UPDATE`, releases reservations). Other users' orders are 404.
+- `payments` — real (`payments.service.ts`) against a **simulated gateway** (`payments.gateway.ts`; `paymentToken` `tok_declined` → declined, `tok_gateway_error` → provider failure, anything else succeeds). `POST /payments` records a `pending` payment for `order.total`, calls the gateway, then resolves it: success → order `paid`, active reservations `fulfilled`, `stockQuantity` decremented; decline → `failed` row + 402, order stays payable. Lapsed holds → reservations `expired`, order `cancelled`, 409 `CHECKOUT_EXPIRED`. A pending payment blocks new attempts and order cancellation. `GET /payments` (paginated, `orderId`/`status` filters), `GET /payments/:id`, and admin-only `POST /payments/:id/refund` (full refund as a new `refunded` row; order → `refunded`; restocks only if the order was `paid`, not `fulfilled`).
 - `admin` — returns **dummy JSON** marked with `// TODO: replace with real Drizzle queries`. `admin` has no controller at all; its dummy handlers are inline in `admin.routes.ts` and should be extracted into `admin.controller.ts` + `admin.service.ts` when implemented.
 
 ## Domain model (read before touching catalog/cart/order code)
@@ -82,7 +83,7 @@ Routes are mounted at **`/api`** (e.g. `/api/products`, `/api/auth/login`), not 
 - **Categories are a self-referencing tree** via nullable `categories.parentId`; the data is two levels deep (10 roots) and the menu builder assumes that. Products are attached to both root and child categories.
 - **Carts support guests:** `carts.userId` is nullable and `carts.sessionId` identifies an anonymous cart. Current cart routes are all behind `authenticate`, so the guest path is modelled but not yet wired up.
 - **`inventory_reservations`** are short-lived stock holds taken during checkout and released on failure/timeout — checkout logic should create them rather than decrementing `stockQuantity` directly.
-- `payments` and `reviews` tables exist in the schema but nothing uses them yet.
+- The `reviews` table exists in the schema but nothing uses it yet.
 - **Column types:** timestamps are `text` ISO-8601 strings defaulting to `current_timestamp`, and all money is `real` (SQLite float). Stay consistent with both rather than introducing a second convention.
 - **Order and Payment Status:** The order status depends on the payment status. For detail guide, follow @db-schema.md.
 
@@ -113,15 +114,11 @@ Routes are mounted at **`/api`** (e.g. `/api/products`, `/api/auth/login`), not 
 - `noUncheckedIndexedAccess` is on, so array/index access is `T | undefined` — destructured Drizzle `.returning()` / aggregate results need a guard or default (see `auth.service.ts` `if (!user) throw ...`).
 - Strip `passwordHash` before returning a user (`sanitizeUser` in `auth.service.ts`).
 
-## Database
+## Database Schema and Seeding
 
-- Schema lives entirely in `src/db/schema.ts`. After editing it, run `npm run db:generate` then `npm run db:migrate` — never hand-write SQL migrations. `drizzle.config.ts` hardcodes `./data/dev.db` rather than reading `DATABASE_URL`.
-- Adding a new table also means adding its `relations(...)` block if it needs `db.query.<table>` with `with:`, and the table must be exported from `schema.ts` (the whole module is passed to `drizzle(sqlite, { schema })`).
-- **Seeding** (`npm run db:seed` → `src/db/seed.ts`) loads 10 files from `data/` in FK-dependency order: users → addresses → categories → products → product_images → product_variants → carts → cart_items → orders → order_items. Each file is validated with a Zod schema in `seed-schema.ts`, then written by the generic `seedTable()` in `seed-table.ts`, which upserts on `id` inside a transaction, so re-running is safe and explicit ids are preserved.
-  - `seed-table.ts` opens its own better-sqlite3 connection per table and does **not** import `config/env.ts` (so no JWT secrets needed) — and it doesn't load dotenv either, so it uses `process.env.DATABASE_URL` or `./data/dev.db`, ignoring `.env`.
-  - `seed.ts` catches errors and only logs `❌ Seeding Failed <message>`, **exiting 0** — check the output, not the exit code. A failure partway leaves the earlier tables seeded.
-  - Adding a seeded table means: a schema in `seed-schema.ts`, a source file in `data/`, and a `seedTable` call in the correct FK position in `seed.ts`.
-- Beyond that, do not seed data unless explicitly asked.
+- Schema lives entirely in `src/db/schema.ts`. Do not touch this file as this schema is final and locked. If any changes are required, i will manually update it and re-seed the database.
+- You are not supposed to run any migrations or seeding related npm scripts because i will take care of that.
+- **Seeding** there are seed related files in `src/db/` that starts with `seed-`. These files i am maintaining and i will take care of these. Do not touch these files.
 
 ## Database tables
 
@@ -130,6 +127,10 @@ For a guide on database tables, columns and relations between tables follow @db-
 ## Timestamp rules
 
 Most of the tables has createdAt and updatedAt columns and some tables has only createdAt. There are rules around how these columns are populated. For detail guide, follow @timestamp-rules.md.
+
+## Logic behind inventory reservatiosn
+
+To learn about how inventory reservations work, follow @inventory-reservation-guide.md.
 
 ## Environment
 

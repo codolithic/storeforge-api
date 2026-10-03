@@ -198,7 +198,12 @@ export const inventoryReservations = sqliteTable('inventory_reservations', {
   variantId: integer('variant_id')
     .notNull()
     .references(() => productVariants.id),
-  orderId: integer('order_id').references(() => orders.id),
+  orderId: integer('order_id')
+    .notNull()
+    .references(() => orders.id),
+  status: text('status', { enum: ['active', 'fulfilled', 'expired'] })
+    .notNull()
+    .default('active'),
   quantity: integer('quantity').notNull(),
   expiresAt: text('expires_at').notNull(),
 });
