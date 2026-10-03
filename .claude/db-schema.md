@@ -164,6 +164,7 @@ SQLite database (via Drizzle ORM). 13 tables across Identity, Catalog, Cart, Ord
 
 **Relations:** belongs to `orders` (cascade delete); one order can have multiple payment rows (initial charge, retries, partial refunds).
 **Calculated column:** `amount` should equal `orders.total` for a standard full payment (set once, when the charge is created). A partial refund is a **separate row**, not an edit to this one.
+**Rule:"** a `pending` payment will either move to `succeeded` or `failed` and cannot be updated to `refunded`. A `succeeded` or `failed` payment can have a `refunded` transaction but that will be new payment.
 
 ## inventory_reservations
 
@@ -190,4 +191,4 @@ SQLite database (via Drizzle ORM). 13 tables across Identity, Catalog, Cart, Ord
 | createdAt | Submission time        |
 
 **Relations:** belongs to `products` (cascade delete) and `users` (cascade delete).
-**Rules:** the review can be only for the `fulfilled` orders and not `pending`, `paid`, `cancelled` or `refunded`.
+**Rule:** the review can be only for the `fulfilled` orders and not `pending`, `paid`, `cancelled` or `refunded`.

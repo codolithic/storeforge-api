@@ -84,6 +84,7 @@ Routes are mounted at **`/api`** (e.g. `/api/products`, `/api/auth/login`), not 
 - **`inventory_reservations`** are short-lived stock holds taken during checkout and released on failure/timeout — checkout logic should create them rather than decrementing `stockQuantity` directly.
 - `payments` and `reviews` tables exist in the schema but nothing uses them yet.
 - **Column types:** timestamps are `text` ISO-8601 strings defaulting to `current_timestamp`, and all money is `real` (SQLite float). Stay consistent with both rather than introducing a second convention.
+- **Order and Payment Status:** The order status depends on the payment status. For detail guide, follow @db-schema.md.
 
 ## Auth flow
 
@@ -125,6 +126,10 @@ Routes are mounted at **`/api`** (e.g. `/api/products`, `/api/auth/login`), not 
 ## Database tables
 
 For a guide on database tables, columns and relations between tables follow @db-schema.md.
+
+## Timestamp rules
+
+Most of the tables has createdAt and updatedAt columns and some tables has only createdAt. There are rules around how these columns are populated. For detail guide, follow @timestamp-rules.md.
 
 ## Environment
 

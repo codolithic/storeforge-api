@@ -10,6 +10,7 @@ import {
   cartItemFileSchema,
   orderFileSchema,
   orderItemFileSchema,
+  paymentFileSchema,
   reviewFileSchema,
 } from './seed-schema.js';
 import { seedTable } from './seed-table.js';
@@ -24,6 +25,7 @@ import {
   cartItems,
   orders,
   orderItems,
+  payments,
   reviews,
 } from './schema.js';
 
@@ -38,6 +40,7 @@ const CART_ITEMS_SOURCE = new URL('../../data/cart_items.json', import.meta.url)
 const ORDERS_SOURCE = new URL('../../data/orders.json', import.meta.url);
 const ORDER_ITEMS_SOURCE = new URL('../../data/order_items.json', import.meta.url);
 const REVIEWS_SOURCE = new URL('../../data/reviews.json', import.meta.url);
+const PAYMENTS_SOURCE = new URL('../../data/payments.json', import.meta.url);
 
 async function readSeedFile(sourceFile: URL) {
   const raw: unknown = JSON.parse(await readFile(sourceFile, 'utf8'));
@@ -104,6 +107,12 @@ try {
   const orderItemsData = orderItemFileSchema.parse(orderItemsRawData);
   console.log('Seeding order items...');
   await seedTable(orderItems, orderItemsData as any, orderItems.id);
+
+  // Payments
+  const paymentsRawData = await readSeedFile(PAYMENTS_SOURCE);
+  const paymentsData = paymentFileSchema.parse(paymentsRawData);
+  console.log('Seeding payments...');
+  await seedTable(payments, paymentsData, payments.id);
 
   // Reviews
   const reviewsRawData = await readSeedFile(REVIEWS_SOURCE);
