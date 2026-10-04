@@ -16,7 +16,6 @@ All dependencies use the latest stable version as of 30-Sep-2026; `npx tsc --noE
 - Drizzle ORM 0.45 + drizzle-kit 0.31, on better-sqlite3 13
 - Zod 4.6 for validation
 - jsonwebtoken 9.0 (access tokens) + argon2 0.45 (password hashing)
-- Pino 10 / pino-http 11 are installed but **not wired up** (`pinoHttp()` is commented out in `app.ts`); logging is `console.*`, and `db/index.ts` enables Drizzle's `logger: true`, so every SQL query is printed
 - dotenv 18 for env loading
 - Prettier 3.9 (config in `.prettierrc`)
 - Vitest 5 + supertest 7.3 for tests

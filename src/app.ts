@@ -2,7 +2,6 @@ import express from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
-// import { pinoHttp } from 'pino-http';
 import { env } from './config/env.js';
 import { createDocsRouter } from './docs/docs.routes.js';
 import routes from './routes/index.js';
@@ -14,7 +13,6 @@ app.use(helmet());
 app.use(cors({ credentials: true, origin: true }));
 app.use(cookieParser());
 app.use(express.json());
-// app.use(pinoHttp());
 
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok' });
