@@ -14,7 +14,7 @@ import {
 import type * as ordersService from './orders.service.js';
 import { checkoutSchema, listOrdersQuerySchema, orderParamsSchema } from './orders.types.js';
 
-const orderSchema = z
+export const orderSchema = z
   .object({
     id: z.number().int(),
     status: z.enum(['pending', 'paid', 'fulfilled', 'cancelled', 'refunded']),

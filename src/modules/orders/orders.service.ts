@@ -18,7 +18,7 @@ import {
   type ListOrdersQuery,
 } from './orders.types.js';
 
-type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+export type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 // Money is stored as SQLite `real`, so round derived totals to cents.
 const roundMoney = (amount: number) => Math.round(amount * 100) / 100;
@@ -26,7 +26,8 @@ const roundMoney = (amount: number) => Math.round(amount * 100) / 100;
 const ownedOrder = (userId: number, orderId: number) =>
   and(eq(orders.id, orderId), eq(orders.userId, userId));
 
-const orderWith = {
+// Shared with the admin order routes, which list every user's orders.
+export const orderWith = {
   shippingAddress: {
     columns: {
       id: true,
@@ -51,7 +52,7 @@ const orderWith = {
   },
 } as const;
 
-type OrderRow = NonNullable<Awaited<ReturnType<typeof findOrder>>>;
+type OrderItemRow = NonNullable<Awaited<ReturnType<typeof findOrder>>>['items'][number];
 
 function findOrder(userId: number, orderId: number) {
   return db.query.orders.findFirst({
@@ -61,7 +62,7 @@ function findOrder(userId: number, orderId: number) {
   });
 }
 
-function formatOrder({ items, ...order }: OrderRow) {
+export function formatOrder<T extends { items: OrderItemRow[] }>({ items, ...order }: T) {
   const lines = items.map((item) => ({
     ...item,
     lineTotal: roundMoney(item.unitPrice * item.quantity),
@@ -255,54 +256,54 @@ export async function checkout(userId: number, input: CheckoutInput) {
   return getOrder(userId, orderId);
 }
 
-// Only pending (unpaid) orders with no payment in flight can be cancelled by
-// the customer. The status change is a single conditional UPDATE so it can't
-// race with another transition, and the order's stock holds are released with it.
-export async function cancelOrder(userId: number, orderId: number) {
-  db.transaction((tx) => {
-    const cancelled = tx
-      .update(orders)
-      .set({ status: 'cancelled', updatedAt: sql`(current_timestamp)` })
-      .where(
-        and(
-          ownedOrder(userId, orderId),
-          eq(orders.status, 'pending'),
-          notExists(
-            tx
-              .select({ id: payments.id })
-              .from(payments)
-              .where(and(eq(payments.orderId, orderId), eq(payments.status, 'pending'))),
-          ),
-        ),
-      )
-      .returning({ id: orders.id })
-      .get();
+// Only pending (unpaid) orders with no payment in flight can be cancelled.
+// The status change is a single conditional UPDATE so it can't race with
+// another transition, and the order's stock holds are released with it.
+// `userId` scopes the order to its owner; admins pass undefined for any order.
+export function cancelPendingOrder(tx: Tx, orderId: number, userId?: number) {
+  const scope = userId === undefined ? eq(orders.id, orderId) : ownedOrder(userId, orderId);
 
-    if (!cancelled) {
-      const existing = tx
-        .select({ status: orders.status })
-        .from(orders)
-        .where(ownedOrder(userId, orderId))
-        .get();
-      if (!existing) {
-        throw new ApiError(404, 'ORDER_NOT_FOUND', 'Order not found');
-      }
-      if (existing.status === 'pending') {
-        throw new ApiError(
-          409,
-          'PAYMENT_IN_PROGRESS',
-          'A payment for this order is in progress, so it cannot be cancelled',
-        );
-      }
+  const cancelled = tx
+    .update(orders)
+    .set({ status: 'cancelled', updatedAt: sql`(current_timestamp)` })
+    .where(
+      and(
+        scope,
+        eq(orders.status, 'pending'),
+        notExists(
+          tx
+            .select({ id: payments.id })
+            .from(payments)
+            .where(and(eq(payments.orderId, orderId), eq(payments.status, 'pending'))),
+        ),
+      ),
+    )
+    .returning({ id: orders.id })
+    .get();
+
+  if (!cancelled) {
+    const existing = tx.select({ status: orders.status }).from(orders).where(scope).get();
+    if (!existing) {
+      throw new ApiError(404, 'ORDER_NOT_FOUND', 'Order not found');
+    }
+    if (existing.status === 'pending') {
       throw new ApiError(
         409,
-        'ORDER_NOT_CANCELLABLE',
-        `Order is ${existing.status} and can no longer be cancelled`,
+        'PAYMENT_IN_PROGRESS',
+        'A payment for this order is in progress, so it cannot be cancelled',
       );
     }
+    throw new ApiError(
+      409,
+      'ORDER_NOT_CANCELLABLE',
+      `Order is ${existing.status} and can no longer be cancelled`,
+    );
+  }
 
-    tx.delete(inventoryReservations).where(eq(inventoryReservations.orderId, orderId)).run();
-  });
+  tx.delete(inventoryReservations).where(eq(inventoryReservations.orderId, orderId)).run();
+}
 
+export async function cancelOrder(userId: number, orderId: number) {
+  db.transaction((tx) => cancelPendingOrder(tx, orderId, userId));
   return getOrder(userId, orderId);
 }
