@@ -33,6 +33,7 @@ npm run db:studio    # open Drizzle Studio to inspect data
 npm run db:seed      # load all data/*.json into the database (idempotent)
 npm test             # vitest run
 npm run typecheck    # type-check only
+npm run docs:lint    # build the OpenAPI spec and run `redocly lint` on it (redocly.yaml)
 npm run format       # format all the files
 ```
 
@@ -61,6 +62,8 @@ How the setup works (`vitest.config.ts` + `tests/`):
 Follow @folder-structure.md for directories and files structure.
 
 Routes are mounted at **`/api`** (e.g. `/api/products`, `/api/auth/login`), not a versioned prefix.
+
+**OpenAPI docs:** `GET /api/docs` serves the Scalar reference UI and `GET /api/docs/openapi.json` the OpenAPI 3.1 spec, built once at startup by `zod-openapi` (`src/docs/openapi.ts`). Each module has a `<module>.openapi.ts` whose paths reuse the module's real Zod request validators. Its response schemas are docs-only, so each one is pinned to the service's return type with `type _ = Assert<Documents<typeof schema, ReturnOf<typeof service.fn>>>`, and drift fails `npm run typecheck`. When you add or change a route, update its `*.openapi.ts` too: `tests/docs.test.ts` fails if the documented operations don't exactly match the routes in `mounts` (`routes/index.ts`). The docs page gets its own nonce-based CSP (`src/docs/docs.routes.ts`); every other route keeps helmet's default.
 
 **Request pipeline:** `routes` → `controller` (HTTP only, thin) → `service` (business logic, Drizzle) → `db`.
 
@@ -142,7 +145,7 @@ JWT_ACCESS_SECRET=<32+ chars>   # openssl rand -hex 32
 JWT_REFRESH_SECRET=<32+ chars>
 ```
 
-Optional, with defaults: `NODE_ENV=development`, `PORT=3000`, `DATABASE_URL=./data/dev.db`, `ACCESS_TOKEN_TTL=15m`, `REFRESH_TOKEN_TTL_DAYS=30`. Both JWT secrets must be ≥32 characters or the app throws on boot.
+Optional, with defaults: `NODE_ENV=development`, `PORT=3000`, `DATABASE_URL=./data/dev.db`, `ACCESS_TOKEN_TTL=15m`, `REFRESH_TOKEN_TTL_DAYS=30`, `ENABLE_API_DOCS` (`true`/`false`; unset means docs are on except when `NODE_ENV=production`). Both JWT secrets must be ≥32 characters or the app throws on boot.
 
 ## Known repo hygiene gaps
 

@@ -1,0 +1,8 @@
+# Used by `npm run docs:lint` against the spec generated from src/docs/openapi.ts.
+extends:
+  - recommended
+rules:
+  # /health, GET /api/categories and logout genuinely have no 4xx responses.
+  operation-4xx-response: off
+  # Private sample project; no license to declare.
+  info-license: off

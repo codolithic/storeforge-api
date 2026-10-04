@@ -8,15 +8,23 @@ import paymentRoutes from '../modules/payments/payments.routes.js';
 import reviewRoutes from '../modules/reviews/reviews.routes.js';
 import adminRoutes from '../modules/admin/admin.routes.js';
 
+// Exported so tests can walk every mounted route (Express doesn't keep mount
+// paths on its router layers) and check each one is in the OpenAPI document.
+export const mounts: ReadonlyArray<readonly [path: string, router: Router]> = [
+  ['/auth', authRoutes],
+  ['/products', productRoutes],
+  ['/categories', categoryRoutes],
+  ['/cart', cartRoutes],
+  ['/orders', orderRoutes],
+  ['/payments', paymentRoutes],
+  ['/reviews', reviewRoutes],
+  ['/admin', adminRoutes],
+];
+
 const router = Router();
 
-router.use('/auth', authRoutes);
-router.use('/products', productRoutes);
-router.use('/categories', categoryRoutes);
-router.use('/cart', cartRoutes);
-router.use('/orders', orderRoutes);
-router.use('/payments', paymentRoutes);
-router.use('/reviews', reviewRoutes);
-router.use('/admin', adminRoutes);
+for (const [path, moduleRouter] of mounts) {
+  router.use(path, moduleRouter);
+}
 
 export default router;

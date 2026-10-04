@@ -9,6 +9,8 @@ const envSchema = z.object({
   JWT_REFRESH_SECRET: z.string().min(32, 'JWT_REFRESH_SECRET must be at least 32 characters'),
   ACCESS_TOKEN_TTL: z.string().default('15m'),
   REFRESH_TOKEN_TTL_DAYS: z.coerce.number().default(30),
+  // Serves /api/docs; unset means on everywhere except production.
+  ENABLE_API_DOCS: z.stringbool().optional(),
 });
 
 // Fails fast at boot if required env vars are missing/invalid, instead of
