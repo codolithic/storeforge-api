@@ -6,6 +6,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **StoreForge API** — a sample e-commerce backend built with Express.js, TypeScript, and SQLite (via Drizzle ORM). It follows patterns used by real e-commerce platforms (variant-level inventory, order snapshots, inventory reservations, refresh-token rotation) while staying simple enough to run locally with a file-based DB.
 
+## Purpose
+
+To learn and play around with agentic ai and agents.
+
 ## Tech Stack
 
 All dependencies use the latest stable version as of 30-Sep-2026; `npx tsc --noEmit`, `npm run build`, and a runtime smoke test pass on this set.
@@ -62,6 +66,10 @@ Follow @folder-structure.md for directories and files structure.
 
 Routes are mounted at **`/api`** (e.g. `/api/products`, `/api/auth/login`), not a versioned prefix.
 
+### Note about payment gateway
+
+We will not be using any real payment gateways and instead we will just mock the payment gateway. What rule dictates the failed payment is yet to be decided.
+
 **OpenAPI docs:** `GET /api/docs` serves the Scalar reference UI and `GET /api/docs/openapi.json` the OpenAPI 3.1 spec, built once at startup by `zod-openapi` (`src/docs/openapi.ts`). Each module has a `<module>.openapi.ts` whose paths reuse the module's real Zod request validators. Its response schemas are docs-only, so each one is pinned to the service's return type with `type _ = Assert<Documents<typeof schema, ReturnOf<typeof service.fn>>>`, and drift fails `npm run typecheck`. When you add or change a route, update its `*.openapi.ts` too: `tests/docs.test.ts` fails if the documented operations don't exactly match the routes in `mounts` (`routes/index.ts`). The docs page gets its own nonce-based CSP (`src/docs/docs.routes.ts`); every other route keeps helmet's default.
 
 **Request pipeline:** `routes` → `controller` (HTTP only, thin) → `service` (business logic, Drizzle) → `db`.
@@ -78,6 +86,10 @@ Routes are mounted at **`/api`** (e.g. `/api/products`, `/api/auth/login`), not 
 - `payments` — real (`payments.service.ts`) against a **simulated gateway** (`payments.gateway.ts`; `paymentToken` `tok_declined` → declined, `tok_gateway_error` → provider failure, anything else succeeds). `POST /payments` records a `pending` payment for `order.total`, calls the gateway, then resolves it: success → order `paid`, active reservations `fulfilled`, `stockQuantity` decremented; decline → `failed` row + 402, order stays payable. Lapsed holds → reservations `expired`, order `cancelled`, 409 `CHECKOUT_EXPIRED`. A pending payment blocks new attempts and order cancellation. `GET /payments` (paginated, `orderId`/`status` filters), `GET /payments/:id`, and admin-only `POST /payments/:id/refund` (full refund as a new `refunded` row; order → `refunded`; restocks only if the order was `paid`, not `fulfilled`).
 - `reviews` — real (`reviews.service.ts`): public `GET /reviews?productId=` (active products only, newest first, `rating` filter, reviewer shown as "First L."), plus authenticated `GET /reviews/me`, `POST /reviews`, `PATCH /reviews/:id` (author only), and `DELETE /reviews/:id` (author or admin). Other users' reviews are 404.
 - `admin` — real (`admin.service.ts`), all `authenticate, authorize('admin')`. `POST /admin/products` creates a product plus optional variants/images in one transaction (`status` defaults to `draft`; 409 `SLUG_IN_USE`/`SKU_IN_USE`, 404 `CATEGORY_NOT_FOUND`). `PATCH /admin/products/:id` edits product-level fields only (bumps `updatedAt`), returning `{ message, changes, product }`. `GET /admin/orders` lists every user's orders (paginated, `status`/`userId` filters, includes `userId`). `PATCH /admin/orders/:id/status` allows only `paid → fulfilled` and `pending → cancelled` (it reuses `cancelPendingOrder` from `orders.service.ts`, so it's blocked while a payment is pending and releases the holds), returning `{ message, changes: { status: { from, to } }, order }`. It never moves money: paid orders are cancelled through `POST /payments/:id/refund`.
+
+## Order and Payment flow
+
+To learn about how payment status drives the order status, follow @order-and-payment-flow.
 
 ## Domain model (read before touching catalog/cart/order code)
 
