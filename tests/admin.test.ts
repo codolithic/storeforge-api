@@ -473,7 +473,7 @@ describe('PATCH /api/admin/orders/:id/status', () => {
     },
   );
 
-  it('cancels a pending order and releases its stock holds', async () => {
+  it('cancels a pending order, expiring its stock holds', async () => {
     const user = await createUser();
     const order = await createOrder(user.id, 'pending', { held: true });
 
@@ -484,22 +484,27 @@ describe('PATCH /api/admin/orders/:id/status', () => {
     expect((await orderRow(order.id))?.status).toBe('cancelled');
     expect(
       await db
-        .select()
+        .select({ status: inventoryReservations.status })
         .from(inventoryReservations)
         .where(eq(inventoryReservations.orderId, order.id)),
-    ).toEqual([]);
+    ).toEqual([{ status: 'expired' }]);
   });
 
-  it('returns 409 PAYMENT_IN_PROGRESS cancelling an order with a pending payment', async () => {
+  it('marks a pending payment failed when cancelling its order', async () => {
     const user = await createUser();
     const order = await createOrder(user.id, 'pending', { held: true });
     await db.insert(payments).values({ orderId: order.id, provider: 'stripe', amount: 200 });
 
     const res = await setStatus(admin.auth, order.id, 'cancelled');
 
-    expect(res.status).toBe(409);
-    expect(res.body.error.code).toBe('PAYMENT_IN_PROGRESS');
-    expect((await orderRow(order.id))?.status).toBe('pending');
+    expect(res.status).toBe(200);
+    expect((await orderRow(order.id))?.status).toBe('cancelled');
+    expect(
+      await db
+        .select({ status: payments.status })
+        .from(payments)
+        .where(eq(payments.orderId, order.id)),
+    ).toEqual([{ status: 'failed' }]);
   });
 
   it.each(['paid', 'fulfilled'] as const)(

@@ -12,6 +12,7 @@ import {
   productVariants,
 } from '../../db/schema.js';
 import { ApiError } from '../../middlewares/error.middleware.js';
+import * as gateway from '../payments/payments.gateway.js';
 import {
   RESERVATION_TTL_MINUTES,
   type CheckoutInput,
@@ -157,13 +158,20 @@ export async function getOrder(userId: number, orderId: number) {
   return formatOrder(order);
 }
 
-// Turns the caller's active cart into a pending order. Prices, names and
-// attributes are snapshotted from the current variant/product, and stock is
-// held with inventory reservations rather than decrementing stockQuantity.
-// Runs as one synchronous better-sqlite3 transaction, so two concurrent
-// checkouts can't both claim the same stock or convert the same cart.
+// Turns the caller's active cart into an order and pays for it in one call.
+// Prices, names and attributes are snapshotted from the current variant/product.
+// It runs in two phases around the (async) gateway call:
+//   1. one synchronous better-sqlite3 transaction validates stock and creates
+//      the `pending` order, its items, `active` reservations and a `pending`
+//      payment for order.total, and marks the cart `converted`. Two concurrent
+//      checkouts can't both claim the same stock or convert the same cart.
+//   2. after the gateway answers, a second transaction settles everything:
+//      success -> payment `succeeded`, order `paid`, reservations `fulfilled`
+//                 and the held units leave stockQuantity;
+//      failure -> payment `failed`, order `cancelled`, reservations `expired`,
+//                 and the cart is reopened so the customer can try again.
 export async function checkout(userId: number, input: CheckoutInput) {
-  const orderId = db.transaction((tx) => {
+  const placed = db.transaction((tx) => {
     const cart = tx
       .select({ id: carts.id })
       .from(carts)
@@ -220,7 +228,7 @@ export async function checkout(userId: number, input: CheckoutInput) {
     const order = tx
       .insert(orders)
       .values({ userId, subtotal, total: subtotal, shippingAddressId })
-      .returning({ id: orders.id })
+      .returning({ id: orders.id, total: orders.total })
       .get();
 
     tx.insert(orderItems)
@@ -250,15 +258,131 @@ export async function checkout(userId: number, input: CheckoutInput) {
 
     tx.update(carts).set({ status: 'converted' }).where(eq(carts.id, cart.id)).run();
 
-    return order.id;
+    const payment = tx
+      .insert(payments)
+      .values({ orderId: order.id, provider: input.provider, amount: order.total })
+      .returning({ id: payments.id })
+      .get();
+
+    return { orderId: order.id, cartId: cart.id, paymentId: payment.id, amount: order.total };
   });
 
-  return getOrder(userId, orderId);
+  let result: gateway.ChargeResult;
+  try {
+    result = await gateway.charge({
+      provider: input.provider,
+      amount: placed.amount,
+      paymentToken: input.paymentToken,
+    });
+  } catch (err) {
+    if (!(err instanceof gateway.PaymentGatewayError)) throw err;
+    // The provider never confirmed a charge, so treat it as a failed payment.
+    db.transaction((tx) => failCheckout(tx, userId, placed, null));
+    throw new ApiError(502, 'PAYMENT_GATEWAY_ERROR', 'The payment provider could not be reached');
+  }
+
+  if (result.status === 'failed') {
+    db.transaction((tx) => failCheckout(tx, userId, placed, result.providerRef));
+    throw new ApiError(402, 'PAYMENT_DECLINED', result.declineReason);
+  }
+
+  db.transaction((tx) => {
+    // Conditional on `pending`: if the order was cancelled while the gateway
+    // call was in flight, the payment is already `failed` and nothing else moves.
+    const settled = tx
+      .update(payments)
+      .set({ status: 'succeeded', providerRef: result.providerRef })
+      .where(and(eq(payments.id, placed.paymentId), eq(payments.status, 'pending')))
+      .returning({ id: payments.id })
+      .get();
+    if (!settled) {
+      throw new ApiError(
+        409,
+        'ORDER_NOT_PAYABLE',
+        'The order was cancelled while its payment was being processed',
+      );
+    }
+
+    tx.update(orders)
+      .set({ status: 'paid', updatedAt: sql`(current_timestamp)` })
+      .where(eq(orders.id, placed.orderId))
+      .run();
+
+    // Holds that lapsed during the gateway call are still honoured, since the
+    // money has already been taken.
+    const fulfilled = tx
+      .update(inventoryReservations)
+      .set({ status: 'fulfilled' })
+      .where(
+        and(
+          eq(inventoryReservations.orderId, placed.orderId),
+          eq(inventoryReservations.status, 'active'),
+        ),
+      )
+      .returning({
+        variantId: inventoryReservations.variantId,
+        quantity: inventoryReservations.quantity,
+      })
+      .all();
+
+    for (const hold of fulfilled) {
+      tx.update(productVariants)
+        .set({ stockQuantity: sql`${productVariants.stockQuantity} - ${hold.quantity}` })
+        .where(eq(productVariants.id, hold.variantId))
+        .run();
+    }
+  });
+
+  return getOrder(userId, placed.orderId);
 }
 
-// Only pending (unpaid) orders with no payment in flight can be cancelled.
-// The status change is a single conditional UPDATE so it can't race with
-// another transition, and the order's stock holds are released with it.
+// Settles a checkout whose charge didn't go through: the payment is `failed`,
+// the order `cancelled` and its holds `expired`. The converted cart is reopened
+// (unless the customer has started a new one) so they can retry checkout.
+function failCheckout(
+  tx: Tx,
+  userId: number,
+  placed: { orderId: number; cartId: number; paymentId: number },
+  providerRef: string | null,
+) {
+  tx.update(payments)
+    .set({ status: 'failed', providerRef })
+    .where(and(eq(payments.id, placed.paymentId), eq(payments.status, 'pending')))
+    .run();
+  tx.update(orders)
+    .set({ status: 'cancelled', updatedAt: sql`(current_timestamp)` })
+    .where(and(eq(orders.id, placed.orderId), eq(orders.status, 'pending')))
+    .run();
+  expireHolds(tx, placed.orderId);
+  tx.update(carts)
+    .set({ status: 'active' })
+    .where(
+      and(
+        eq(carts.id, placed.cartId),
+        eq(carts.status, 'converted'),
+        notExists(
+          tx
+            .select({ id: carts.id })
+            .from(carts)
+            .where(and(eq(carts.userId, userId), eq(carts.status, 'active'))),
+        ),
+      ),
+    )
+    .run();
+}
+
+function expireHolds(tx: Tx, orderId: number) {
+  tx.update(inventoryReservations)
+    .set({ status: 'expired' })
+    .where(
+      and(eq(inventoryReservations.orderId, orderId), eq(inventoryReservations.status, 'active')),
+    )
+    .run();
+}
+
+// Only pending (unpaid) orders can be cancelled. The status change is a single
+// conditional UPDATE so it can't race with another transition. Any payment
+// still `pending` for the order is marked `failed` and its stock holds expire.
 // `userId` scopes the order to its owner; admins pass undefined for any order.
 export function cancelPendingOrder(tx: Tx, orderId: number, userId?: number) {
   const scope = userId === undefined ? eq(orders.id, orderId) : ownedOrder(userId, orderId);
@@ -266,18 +390,7 @@ export function cancelPendingOrder(tx: Tx, orderId: number, userId?: number) {
   const cancelled = tx
     .update(orders)
     .set({ status: 'cancelled', updatedAt: sql`(current_timestamp)` })
-    .where(
-      and(
-        scope,
-        eq(orders.status, 'pending'),
-        notExists(
-          tx
-            .select({ id: payments.id })
-            .from(payments)
-            .where(and(eq(payments.orderId, orderId), eq(payments.status, 'pending'))),
-        ),
-      ),
-    )
+    .where(and(scope, eq(orders.status, 'pending')))
     .returning({ id: orders.id })
     .get();
 
@@ -286,13 +399,6 @@ export function cancelPendingOrder(tx: Tx, orderId: number, userId?: number) {
     if (!existing) {
       throw new ApiError(404, 'ORDER_NOT_FOUND', 'Order not found');
     }
-    if (existing.status === 'pending') {
-      throw new ApiError(
-        409,
-        'PAYMENT_IN_PROGRESS',
-        'A payment for this order is in progress, so it cannot be cancelled',
-      );
-    }
     throw new ApiError(
       409,
       'ORDER_NOT_CANCELLABLE',
@@ -300,7 +406,11 @@ export function cancelPendingOrder(tx: Tx, orderId: number, userId?: number) {
     );
   }
 
-  tx.delete(inventoryReservations).where(eq(inventoryReservations.orderId, orderId)).run();
+  tx.update(payments)
+    .set({ status: 'failed' })
+    .where(and(eq(payments.orderId, orderId), eq(payments.status, 'pending')))
+    .run();
+  expireHolds(tx, orderId);
 }
 
 export async function cancelOrder(userId: number, orderId: number) {

@@ -5,10 +5,10 @@ import type { PaymentProvider } from './payments.types.js';
 // (async calls, provider-issued references) so the service can later be pointed
 // at Stripe/PayPal SDKs without changing its flow. Outcomes are driven by the
 // payment token, like a provider's test-mode tokens:
-//   tok_declined       -> the charge is declined
+//   tok_decline        -> the charge is declined
 //   tok_gateway_error  -> the provider call itself fails
-//   anything else      -> the charge succeeds
-export const DECLINED_TOKEN = 'tok_declined';
+//   anything else      -> the charge succeeds (so does an omitted token)
+export const DECLINED_TOKEN = 'tok_decline';
 export const GATEWAY_ERROR_TOKEN = 'tok_gateway_error';
 
 export class PaymentGatewayError extends Error {
@@ -45,7 +45,7 @@ function refundRef(provider: string) {
 export async function charge(input: {
   provider: PaymentProvider;
   amount: number;
-  paymentToken: string;
+  paymentToken: string | undefined;
 }): Promise<ChargeResult> {
   if (input.paymentToken === GATEWAY_ERROR_TOKEN) {
     throw new PaymentGatewayError(`${input.provider} is unavailable`);

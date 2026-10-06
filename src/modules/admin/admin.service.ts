@@ -185,8 +185,8 @@ async function getOrder(orderId: number) {
 
 // Admins move orders along the parts of the flow that happen outside the app:
 //   paid → fulfilled   the order has been shipped/delivered
-//   pending → cancelled same rules as a customer cancel (no payment in flight;
-//                       stock holds released)
+//   pending → cancelled same rules as a customer cancel (a pending payment is
+//                       marked failed; stock holds expire)
 // Money never moves here: a paid order is cancelled by refunding its payment.
 export async function updateOrderStatus(orderId: number, input: UpdateOrderStatusInput) {
   const from = db.transaction((tx) => {

@@ -11,11 +11,7 @@ import {
   type ReturnOf,
 } from '../../docs/openapi.helpers.js';
 import type * as paymentsService from './payments.service.js';
-import {
-  createPaymentSchema,
-  listPaymentsQuerySchema,
-  paymentParamsSchema,
-} from './payments.types.js';
+import { listPaymentsQuerySchema, paymentParamsSchema } from './payments.types.js';
 
 const paymentSchema = z
   .object({
@@ -43,26 +39,6 @@ type _list = Assert<
 
 export const paymentPaths: ZodOpenApiPathsObject = {
   '/api/payments': {
-    post: {
-      tags: ['Payments'],
-      operationId: 'createPayment',
-      summary: 'Pay for a pending order',
-      description:
-        'Charges `order.total` through the simulated gateway: `paymentToken` `tok_declined` is declined, `tok_gateway_error` simulates a provider failure, anything else succeeds. Success marks the order `paid`. If the stock hold has lapsed, the order is cancelled (409 `CHECKOUT_EXPIRED`).',
-      security: bearerAuth,
-      requestBody: { content: { 'application/json': { schema: createPaymentSchema } } },
-      responses: {
-        201: json('The succeeded payment', paymentSchema),
-        ...errors({
-          400: ['VALIDATION_ERROR'],
-          401: ['UNAUTHORIZED'],
-          402: ['PAYMENT_DECLINED'],
-          404: ['ORDER_NOT_FOUND'],
-          409: ['ORDER_NOT_PAYABLE', 'PAYMENT_IN_PROGRESS', 'CHECKOUT_EXPIRED'],
-          502: ['PAYMENT_GATEWAY_ERROR'],
-        }),
-      },
-    },
     get: {
       tags: ['Payments'],
       operationId: 'listPayments',

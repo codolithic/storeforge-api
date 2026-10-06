@@ -97,14 +97,14 @@ describe('GET /api/docs/openapi.json', () => {
 
   it('lists the exact error codes a route can return', async () => {
     const res = await request(app).get('/api/docs/openapi.json');
-    const conflict = res.body.paths['/api/payments'].post.responses['409'];
+    const conflict = res.body.paths['/api/orders'].post.responses['409'];
 
     expect(conflict.description).toBe(
-      'Conflict: ORDER_NOT_PAYABLE, PAYMENT_IN_PROGRESS, CHECKOUT_EXPIRED',
+      'Conflict: ITEM_UNAVAILABLE, INSUFFICIENT_STOCK, ORDER_NOT_PAYABLE',
     );
     expect(
       conflict.content['application/json'].schema.properties.error.properties.code.enum,
-    ).toEqual(['ORDER_NOT_PAYABLE', 'PAYMENT_IN_PROGRESS', 'CHECKOUT_EXPIRED']);
+    ).toEqual(['ITEM_UNAVAILABLE', 'INSUFFICIENT_STOCK', 'ORDER_NOT_PAYABLE']);
   });
 });
 

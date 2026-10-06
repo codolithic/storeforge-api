@@ -67,21 +67,23 @@ export const orderPaths: ZodOpenApiPathsObject = {
     post: {
       tags: ['Orders'],
       operationId: 'checkout',
-      summary: 'Check out the active cart',
+      summary: 'Check out and pay for the active cart',
       description:
-        'Creates a `pending` order from the cart, snapshotting current prices and names, and holds stock for 15 minutes. Ships to `shippingAddressId` if given, else the default address. The body is optional.',
+        'Creates an order from the cart (snapshotting current prices and names, holding stock, and recording a `pending` payment for the total), then charges it through the simulated gateway: `paymentToken` `tok_decline` is declined, `tok_gateway_error` simulates a provider failure, anything else (or none) succeeds. Success returns the `paid` order. A failed charge cancels the order, marks the payment `failed`, releases the stock, and reopens the cart. Ships to `shippingAddressId` if given, else the default address. The body is optional; `provider` defaults to `stripe`.',
       security: bearerAuth,
       requestBody: {
         required: false,
         content: { 'application/json': { schema: checkoutSchema } },
       },
       responses: {
-        201: json('The pending order', orderSchema),
+        201: json('The paid order', orderSchema),
         ...errors({
           400: ['VALIDATION_ERROR', 'CART_EMPTY'],
           401: ['UNAUTHORIZED'],
+          402: ['PAYMENT_DECLINED'],
           404: ['ADDRESS_NOT_FOUND'],
-          409: ['ITEM_UNAVAILABLE', 'INSUFFICIENT_STOCK'],
+          409: ['ITEM_UNAVAILABLE', 'INSUFFICIENT_STOCK', 'ORDER_NOT_PAYABLE'],
+          502: ['PAYMENT_GATEWAY_ERROR'],
         }),
       },
     },
@@ -114,7 +116,8 @@ export const orderPaths: ZodOpenApiPathsObject = {
       tags: ['Orders'],
       operationId: 'cancelOrder',
       summary: 'Cancel a pending order',
-      description: 'Only `pending` orders with no payment in progress; releases the stock holds.',
+      description:
+        'Only `pending` orders. Any `pending` payment for the order is marked `failed`, and its stock holds expire.',
       security: bearerAuth,
       requestParams: { path: orderParamsSchema },
       responses: {
@@ -123,7 +126,7 @@ export const orderPaths: ZodOpenApiPathsObject = {
           400: ['VALIDATION_ERROR'],
           401: ['UNAUTHORIZED'],
           404: ['ORDER_NOT_FOUND'],
-          409: ['PAYMENT_IN_PROGRESS', 'ORDER_NOT_CANCELLABLE'],
+          409: ['ORDER_NOT_CANCELLABLE'],
         }),
       },
     },
