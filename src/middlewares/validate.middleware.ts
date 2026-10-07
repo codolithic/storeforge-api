@@ -1,10 +1,10 @@
 import type { NextFunction, Request, Response } from 'express';
-import type { ZodSchema } from 'zod';
+import type { ZodType } from 'zod';
 
 // Generic request-body validator: parses+replaces req.body with the typed,
 // validated result. Throws a ZodError on failure, caught by errorHandler.
 export const validateBody =
-  (schema: ZodSchema) =>
+  (schema: ZodType) =>
   (req: Request, _res: Response, next: NextFunction): void => {
     req.body = schema.parse(req.body);
     next();
@@ -13,7 +13,7 @@ export const validateBody =
 // Query-string validator. Express 5 makes req.query a read-only getter, so the
 // parsed result is stored on res.locals.query instead of replacing req.query.
 export const validateQuery =
-  (schema: ZodSchema) =>
+  (schema: ZodType) =>
   (req: Request, res: Response, next: NextFunction): void => {
     res.locals.query = schema.parse(req.query);
     next();
@@ -22,7 +22,7 @@ export const validateQuery =
 // Route-params validator; stores the parsed result on res.locals.params to
 // mirror validateQuery (Express 5 types req.params values as string | string[]).
 export const validateParams =
-  (schema: ZodSchema) =>
+  (schema: ZodType) =>
   (req: Request, res: Response, next: NextFunction): void => {
     res.locals.params = schema.parse(req.params);
     next();

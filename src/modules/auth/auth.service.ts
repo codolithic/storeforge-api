@@ -1,10 +1,10 @@
 import { and, eq, gt, isNull } from 'drizzle-orm';
-import { db } from '../../db/index.js';
-import { refreshTokens, users } from '../../db/schema.js';
-import { hashPassword, verifyPassword } from '../../utils/password.js';
-import { generateRefreshToken, hashToken, signAccessToken } from '../../utils/jwt.js';
-import { ApiError } from '../../middlewares/error.middleware.js';
-import { env } from '../../config/env.js';
+import { db } from '@db/index.js';
+import { refreshTokens, users } from '@db/schema.js';
+import { hashPassword, verifyPassword } from '@utils/password.js';
+import { generateRefreshToken, hashToken, signAccessToken } from '@utils/jwt.js';
+import { ApiError } from '@middlewares/error.middleware.js';
+import { env } from '@config/env.js';
 import type { LoginInput, RegisterInput } from './auth.types.js';
 
 const REFRESH_TTL_MS = env.REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000;

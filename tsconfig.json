@@ -14,7 +14,15 @@
     "resolveJsonModule": true,
     "declaration": false,
     "sourceMap": true,
-    "types": ["node"]
+    "types": ["node"],
+    "paths": {
+      "@config/*": ["./src/config/*"],
+      "@middlewares/*": ["./src/middlewares/*"],
+      "@db/*": ["./src/db/*"],
+      "@routes/*": ["./src/routes/*"],
+      "@utils/*": ["./src/utils/*"],
+      "@docs/*": ["./src/docs/*"]
+    }
   },
   "include": ["src/**/*.ts"],
   "exclude": ["node_modules", "dist"]

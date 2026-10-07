@@ -1,7 +1,6 @@
 import rateLimit from 'express-rate-limit';
 
-// Auth endpoints are the classic brute-force / credential-stuffing target,
-// so they get a tighter limit than the rest of the API.
+// Auth rate limit should not too frequent from a given device
 export const authRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 10,

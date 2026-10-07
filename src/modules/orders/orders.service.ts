@@ -1,7 +1,6 @@
-import { and, asc, count, desc, eq, gt, inArray, notExists, sql, sum } from 'drizzle-orm';
-import { db } from '../../db/index.js';
+import { and, asc, count, desc, eq, notExists, sql } from 'drizzle-orm';
+import { db } from '@db/index.js';
 import {
-  addresses,
   cartItems,
   carts,
   inventoryReservations,
@@ -10,9 +9,20 @@ import {
   payments,
   products,
   productVariants,
-} from '../../db/schema.js';
-import { ApiError } from '../../middlewares/error.middleware.js';
+} from '@db/schema.js';
+import { ApiError } from '@middlewares/error.middleware.js';
 import * as gateway from '../payments/payments.gateway.js';
+import {
+  findOrder,
+  formatOrder,
+  orderWith,
+  ownedOrder,
+  reservedQuantities,
+  resolveShippingAddressId,
+  roundMoney,
+  expireHolds,
+  failCheckout,
+} from './orders.utils.js';
 import {
   RESERVATION_TTL_MINUTES,
   type CheckoutInput,
@@ -20,105 +30,6 @@ import {
 } from './orders.types.js';
 
 export type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
-
-// Money is stored as SQLite `real`, so round derived totals to cents.
-const roundMoney = (amount: number) => Math.round(amount * 100) / 100;
-
-const ownedOrder = (userId: number, orderId: number) =>
-  and(eq(orders.id, orderId), eq(orders.userId, userId));
-
-// Shared with the admin order routes, which list every user's orders.
-export const orderWith = {
-  shippingAddress: {
-    columns: {
-      id: true,
-      line1: true,
-      line2: true,
-      city: true,
-      state: true,
-      postalCode: true,
-      country: true,
-    },
-  },
-  items: {
-    columns: {
-      id: true,
-      variantId: true,
-      productName: true,
-      variantAttributes: true,
-      unitPrice: true,
-      quantity: true,
-    },
-    orderBy: asc(orderItems.id),
-  },
-} as const;
-
-type OrderItemRow = NonNullable<Awaited<ReturnType<typeof findOrder>>>['items'][number];
-
-function findOrder(userId: number, orderId: number) {
-  return db.query.orders.findFirst({
-    columns: { userId: false },
-    where: ownedOrder(userId, orderId),
-    with: orderWith,
-  });
-}
-
-export function formatOrder<T extends { items: OrderItemRow[] }>({ items, ...order }: T) {
-  const lines = items.map((item) => ({
-    ...item,
-    lineTotal: roundMoney(item.unitPrice * item.quantity),
-  }));
-  return {
-    ...order,
-    items: lines,
-    itemCount: lines.reduce((total, item) => total + item.quantity, 0),
-  };
-}
-
-// An explicit address must be the caller's own; otherwise fall back to their
-// default address, if any. Foreign ids are a 404 so they aren't revealed.
-function resolveShippingAddressId(tx: Tx, userId: number, addressId: number | undefined) {
-  if (addressId === undefined) {
-    return (
-      tx
-        .select({ id: addresses.id })
-        .from(addresses)
-        .where(and(eq(addresses.userId, userId), eq(addresses.isDefault, true)))
-        .orderBy(asc(addresses.id))
-        .get()?.id ?? null
-    );
-  }
-
-  const address = tx
-    .select({ id: addresses.id })
-    .from(addresses)
-    .where(and(eq(addresses.id, addressId), eq(addresses.userId, userId)))
-    .get();
-  if (!address) {
-    throw new ApiError(404, 'ADDRESS_NOT_FOUND', 'Shipping address not found');
-  }
-  return address.id;
-}
-
-// Stock still held by other pending checkouts whose reservations haven't lapsed.
-function reservedQuantities(tx: Tx, variantIds: number[], now: string) {
-  const rows = tx
-    .select({
-      variantId: inventoryReservations.variantId,
-      reserved: sum(inventoryReservations.quantity),
-    })
-    .from(inventoryReservations)
-    .where(
-      and(
-        inArray(inventoryReservations.variantId, variantIds),
-        eq(inventoryReservations.status, 'active'),
-        gt(inventoryReservations.expiresAt, now),
-      ),
-    )
-    .groupBy(inventoryReservations.variantId)
-    .all();
-  return new Map(rows.map((row) => [row.variantId, Number(row.reserved ?? 0)]));
-}
 
 export async function listOrders(userId: number, query: ListOrdersQuery) {
   const where = and(
@@ -172,6 +83,7 @@ export async function getOrder(userId: number, orderId: number) {
 //                 and the cart is reopened so the customer can try again.
 export async function checkout(userId: number, input: CheckoutInput) {
   const placed = db.transaction((tx) => {
+    // first find the cart of the user
     const cart = tx
       .select({ id: carts.id })
       .from(carts)
@@ -179,6 +91,14 @@ export async function checkout(userId: number, input: CheckoutInput) {
       .orderBy(desc(carts.id))
       .get();
 
+    // if cart exist then get all the cart items with product and variant data
+    /**
+     * select pv.id as "variantId", ci.quantity as quantity, pv.price as price, pv.attributes as attributes,
+     * pv.stock_quantity as "stockQuantity", p.name as "productName", p.status as "productStatus"
+     * from cart_items as ci inner join product_variants as pv
+     * on pv.id = ci.variant_id inner join products as p on p.id = pv.product_id
+     * where ci.cart_id = <<cart.id>> order by ci.id
+     */
     const lines = cart
       ? tx
           .select({
@@ -202,9 +122,13 @@ export async function checkout(userId: number, input: CheckoutInput) {
       throw new ApiError(400, 'CART_EMPTY', 'Cannot check out an empty cart');
     }
 
+    // this will just get the default address for user if input.shippingAddressId is not provided
+    // else just check if the address exist and belongs to the user
     const shippingAddressId = resolveShippingAddressId(tx, userId, input.shippingAddressId);
 
     const now = new Date();
+    // get any active reserved quantities that already exist
+    // returned value type - {[variantId]: quantity}
     const reserved = reservedQuantities(
       tx,
       lines.map((line) => line.variantId),
@@ -215,15 +139,23 @@ export async function checkout(userId: number, input: CheckoutInput) {
       if (line.productStatus !== 'active') {
         throw new ApiError(409, 'ITEM_UNAVAILABLE', `${line.productName} is no longer available`);
       }
+
+      // this is where we deduct the available stock
+      // line.stockQuantity is the productVariant.stockQuantity
+      // reserved is the existing inventory reservations which
+      // will be null or undefined if does not exist
       const available = line.stockQuantity - (reserved.get(line.variantId) ?? 0);
       if (line.quantity > available) {
         throw new ApiError(409, 'INSUFFICIENT_STOCK', `Not enough stock for ${line.productName}`);
       }
     }
 
+    // for better understanding
+    // arr.reduce((accumulator, currentValue) => { returns updated accumulator }, "")
     const subtotal = roundMoney(
       lines.reduce((total, line) => total + line.price * line.quantity, 0),
     );
+
     // Tax and shipping aren't modelled yet, so both stay at their 0 default.
     const order = tx
       .insert(orders)
@@ -334,50 +266,6 @@ export async function checkout(userId: number, input: CheckoutInput) {
   });
 
   return getOrder(userId, placed.orderId);
-}
-
-// Settles a checkout whose charge didn't go through: the payment is `failed`,
-// the order `cancelled` and its holds `expired`. The converted cart is reopened
-// (unless the customer has started a new one) so they can retry checkout.
-function failCheckout(
-  tx: Tx,
-  userId: number,
-  placed: { orderId: number; cartId: number; paymentId: number },
-  providerRef: string | null,
-) {
-  tx.update(payments)
-    .set({ status: 'failed', providerRef })
-    .where(and(eq(payments.id, placed.paymentId), eq(payments.status, 'pending')))
-    .run();
-  tx.update(orders)
-    .set({ status: 'cancelled', updatedAt: sql`(current_timestamp)` })
-    .where(and(eq(orders.id, placed.orderId), eq(orders.status, 'pending')))
-    .run();
-  expireHolds(tx, placed.orderId);
-  tx.update(carts)
-    .set({ status: 'active' })
-    .where(
-      and(
-        eq(carts.id, placed.cartId),
-        eq(carts.status, 'converted'),
-        notExists(
-          tx
-            .select({ id: carts.id })
-            .from(carts)
-            .where(and(eq(carts.userId, userId), eq(carts.status, 'active'))),
-        ),
-      ),
-    )
-    .run();
-}
-
-function expireHolds(tx: Tx, orderId: number) {
-  tx.update(inventoryReservations)
-    .set({ status: 'expired' })
-    .where(
-      and(eq(inventoryReservations.orderId, orderId), eq(inventoryReservations.status, 'active')),
-    )
-    .run();
 }
 
 // Only pending (unpaid) orders can be cancelled. The status change is a single

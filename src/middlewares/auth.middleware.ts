@@ -11,6 +11,7 @@ declare global {
 }
 
 // Verifies the Bearer access token and attaches the identity to req.user.
+// TODO - Whey do we use Bearer based auth instead of cookie based one?
 export const authenticate = (req: Request, _res: Response, next: NextFunction): void => {
   const header = req.headers.authorization;
   if (!header?.startsWith('Bearer ')) {
