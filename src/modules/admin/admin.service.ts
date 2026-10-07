@@ -2,7 +2,7 @@ import { and, asc, count, desc, eq, inArray, ne, sql } from 'drizzle-orm';
 import { db } from '../../db/index.js';
 import { categories, orders, productImages, products, productVariants } from '../../db/schema.js';
 import { ApiError } from '../../middlewares/error.middleware.js';
-import { cancelPendingOrder, formatOrder, orderWith, type Tx } from '../orders/orders.service.js';
+import { cancelPendingOrder, formatOrder, orderWith, type Tx } from '../orders/orders.utils.js';
 import type {
   CreateProductInput,
   ListAdminOrdersQuery,

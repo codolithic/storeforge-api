@@ -165,3 +165,36 @@ export function expireHolds(tx: Tx, orderId: number) {
     )
     .run();
 }
+
+// Only pending (unpaid) orders can be cancelled. The status change is a single
+// conditional UPDATE so it can't race with another transition. Any payment
+// still `pending` for the order is marked `failed` and its stock holds expire.
+// `userId` scopes the order to its owner; admins pass undefined for any order.
+export function cancelPendingOrder(tx: Tx, orderId: number, userId?: number) {
+  const scope = userId === undefined ? eq(orders.id, orderId) : ownedOrder(userId, orderId);
+
+  const cancelled = tx
+    .update(orders)
+    .set({ status: 'cancelled', updatedAt: sql`(current_timestamp)` })
+    .where(and(scope, eq(orders.status, 'pending')))
+    .returning({ id: orders.id })
+    .get();
+
+  if (!cancelled) {
+    const existing = tx.select({ status: orders.status }).from(orders).where(scope).get();
+    if (!existing) {
+      throw new ApiError(404, 'ORDER_NOT_FOUND', 'Order not found');
+    }
+    throw new ApiError(
+      409,
+      'ORDER_NOT_CANCELLABLE',
+      `Order is ${existing.status} and can no longer be cancelled`,
+    );
+  }
+
+  tx.update(payments)
+    .set({ status: 'failed' })
+    .where(and(eq(payments.orderId, orderId), eq(payments.status, 'pending')))
+    .run();
+  expireHolds(tx, orderId);
+}
