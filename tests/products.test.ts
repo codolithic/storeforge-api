@@ -1,6 +1,8 @@
 import request from 'supertest';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { app } from '../src/app.js';
+import { db } from '../src/db/index.js';
+import { reviews, users } from '../src/db/schema.js';
 import { migrateTestDb } from './helpers/db.js';
 import { PRODUCT_ROWS, seedCatalog } from './fixtures/catalog.js';
 
@@ -16,9 +18,28 @@ async function listIds(query: Query = {}) {
   return res.body.data.items.map((p: { id: number }) => p.id) as number[];
 }
 
+// Average ratings: 1 → 4.5, 2 → 3, 3 → 5, 4 → 1.5, 5 → 4; 6–8 have no reviews.
+// Draft product 9 averages 5 but must never be listed.
+const REVIEW_ROWS = [
+  { productId: 1, userId: 1, rating: 5 },
+  { productId: 1, userId: 2, rating: 4 },
+  { productId: 2, userId: 1, rating: 3 },
+  { productId: 3, userId: 1, rating: 5 },
+  { productId: 3, userId: 2, rating: 5 },
+  { productId: 4, userId: 1, rating: 1 },
+  { productId: 4, userId: 2, rating: 2 },
+  { productId: 5, userId: 1, rating: 4 },
+  { productId: 9, userId: 1, rating: 5 },
+];
+
 beforeAll(async () => {
   migrateTestDb();
   await seedCatalog();
+  await db.insert(users).values([
+    { id: 1, email: 'reviewer1@example.com', passwordHash: 'not-used' },
+    { id: 2, email: 'reviewer2@example.com', passwordHash: 'not-used' },
+  ]);
+  await db.insert(reviews).values(REVIEW_ROWS);
 });
 
 describe('GET /api/products', () => {
@@ -145,6 +166,73 @@ describe('GET /api/products', () => {
     });
   });
 
+  describe('rating range', () => {
+    it('supports a lower bound on its own, excluding unreviewed products', async () => {
+      expect(await listIds({ min_rating: 4 })).toEqual([1, 5, 3]);
+    });
+
+    it('supports an upper bound on its own, excluding unreviewed products', async () => {
+      expect(await listIds({ max_rating: 3 })).toEqual([2, 4]);
+    });
+
+    it('includes products rated exactly on both bounds', async () => {
+      expect(await listIds({ min_rating: 3, max_rating: 4.5 })).toEqual([1, 2, 5]);
+    });
+
+    it('compares against the unrounded average and accepts fractional bounds', async () => {
+      expect(await listIds({ min_rating: 4.5 })).toEqual([1, 3]);
+      expect(await listIds({ min_rating: 4.6 })).toEqual([3]);
+      expect(await listIds({ max_rating: 1.4 })).toEqual([]);
+    });
+
+    it('accepts min_rating equal to max_rating', async () => {
+      expect(await listIds({ min_rating: 1.5, max_rating: 1.5 })).toEqual([4]);
+    });
+
+    it('never lists non-active products, however well rated', async () => {
+      expect(await listIds({ min_rating: 5 })).toEqual([3]);
+    });
+
+    it('lists unreviewed products when no rating filter is given', async () => {
+      expect(await listIds()).toEqual(expect.arrayContaining([6, 7, 8]));
+    });
+
+    it('includes each product averageRating when filtering by rating', async () => {
+      const res = await listProducts({ min_rating: 4 });
+
+      expect(
+        res.body.data.items.map((p: { id: number; averageRating: number }) => [
+          p.id,
+          p.averageRating,
+        ]),
+      ).toEqual([
+        [1, 4.5],
+        [5, 4],
+        [3, 5],
+      ]);
+    });
+
+    it('includes averageRating with only max_rating given', async () => {
+      const res = await listProducts({ max_rating: 2 });
+      expect(res.body.data.items).toMatchObject([{ id: 4, averageRating: 1.5 }]);
+    });
+
+    it('omits averageRating when no rating filter is given', async () => {
+      const res = await listProducts({ limit: 100 });
+
+      for (const item of res.body.data.items) {
+        expect(item).not.toHaveProperty('averageRating');
+      }
+    });
+
+    it('combines with other filters and counts only matches in total', async () => {
+      const res = await listProducts({ category: 'electronics', min_rating: 4, max_price: 200 });
+
+      expect(res.body.data.items.map((p: { id: number }) => p.id)).toEqual([1, 5]);
+      expect(res.body.data.pagination).toEqual({ page: 1, limit: 20, total: 2, totalPages: 1 });
+    });
+  });
+
   describe('sorting', () => {
     it('sorts by name ascending by default', async () => {
       // SQLite's default BINARY collation: 'X' (0x58) sorts before '_' (0x5F).
@@ -221,6 +309,10 @@ describe('GET /api/products', () => {
       ['limit', '2.5'],
       ['min_price', '-1'],
       ['max_price', 'cheap'],
+      ['min_rating', '0'],
+      ['min_rating', '5.5'],
+      ['max_rating', '6'],
+      ['max_rating', 'good'],
       ['sort', 'popularity'],
       ['order', 'up'],
       ['category', '   '],
@@ -248,6 +340,15 @@ describe('GET /api/products', () => {
       expect(res.status).toBe(400);
       expect(res.body.error.details.fieldErrors.min_price).toEqual([
         'min_price must be less than or equal to max_price',
+      ]);
+    });
+
+    it('rejects min_rating greater than max_rating', async () => {
+      const res = await listProducts({ min_rating: 4, max_rating: 2 });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error.details.fieldErrors.min_rating).toEqual([
+        'min_rating must be less than or equal to max_rating',
       ]);
     });
 

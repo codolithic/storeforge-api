@@ -27,6 +27,9 @@ const productSummarySchema = z
       .meta({ description: 'Display/starting price; variants set the real price' }),
     category: z.string().nullable().meta({ description: 'Category name' }),
     status: z.enum(['active', 'draft', 'archived']),
+    averageRating: z.number().optional().meta({
+      description: 'Unrounded average review rating; present only when filtering by rating',
+    }),
     images: z.array(imageSchema),
   })
   .meta({ id: 'ProductSummary' });
@@ -70,7 +73,7 @@ export const productPaths: ZodOpenApiPathsObject = {
       security: [],
       summary: 'List active products',
       description:
-        'Paginated. `category` is a category slug and also matches its subcategories; `search` matches the name literally. `min_price` must be ≤ `max_price` (both filter on `basePrice`).',
+        'Paginated. `category` is a category slug and also matches its subcategories; `search` matches the name literally. `min_price` must be ≤ `max_price` (both filter on `basePrice`). `min_rating`/`max_rating` (1–5, inclusive, `min_rating` ≤ `max_rating`) filter on the average review rating; products without reviews are excluded when either is set, and each item then includes `averageRating`.',
       requestParams: { query: listProductsQuerySchema },
       responses: {
         200: json('A page of products', productListSchema),
