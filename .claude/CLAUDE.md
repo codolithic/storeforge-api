@@ -160,9 +160,8 @@ Optional, with defaults: `NODE_ENV=development`, `PORT=3000`, `DATABASE_URL=./da
 
 ## Known repo hygiene gaps
 
-- `.gitignore` ignores `data/` wholesale, so **the seed JSON files and `dev.db` are not committed** — `npm run db:seed` can't run on a fresh clone. It also ignores `drizzle/` wholesale, so **generated migrations are not committed** and `db:migrate` can't reproduce the schema either. Ignore only `data/*.db*` and drizzle build noise if this is meant to be shareable.
+- `.gitignore` ignores `data/` wholesale, so **the seed JSON files and `dev.db` are not committed** — `npm run db:seed` can't run on a fresh clone.
 - `npm audit` reports 4 moderate advisories, all from one transitive chain: `drizzle-kit` → `@esbuild-kit/esm-loader` → `esbuild <=0.24.2` (dev-server request forgery). It is dev-tooling only and `npm audit fix --force` would downgrade drizzle-kit to 0.18.1, so it is knowingly left alone — don't "fix" it.
-- `src/.DS_Store` and `src/modules/.DS_Store` are still tracked despite the `.DS_Store` ignore rule (ignore rules don't apply to already-tracked files); they need `git rm --cached` to actually go away.
 
 ## What Not to Do
 
