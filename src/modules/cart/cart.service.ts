@@ -1,6 +1,6 @@
 import { and, asc, desc, eq } from 'drizzle-orm';
-import { db } from '@db/index.js';
-import { cartItems, carts } from '@db/schema.js';
+import { db } from '#db/index.js';
+import { cartItems, carts } from '#db/schema.js';
 import { type AddCartItemInput, type UpdateCartItemInput } from './cart.types.js';
 import {
   activeCartOf,

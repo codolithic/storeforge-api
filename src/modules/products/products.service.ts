@@ -1,8 +1,8 @@
 import { and, asc, count, desc, eq, gte, inArray, lte, or, sql, type SQL } from 'drizzle-orm';
 import type { SQLiteSelect } from 'drizzle-orm/sqlite-core';
-import { db } from '@db/index.js';
-import { ApiError } from '@middlewares/error.middleware.js';
-import { categories, productImages, products, productVariants, reviews } from '@db/schema.js';
+import { db } from '#db/index.js';
+import { ApiError } from '#middlewares/error.middleware.js';
+import { categories, productImages, products, productVariants, reviews } from '#db/schema.js';
 import type { ListProductsQuery } from './products.types.js';
 
 const SORT_COLUMNS = {

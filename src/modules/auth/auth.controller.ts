@@ -1,7 +1,7 @@
 import type { Request, Response } from 'express';
-import { sendSuccess } from '@utils/apiResponse.js';
-import { env } from '@config/env.js';
-import { ApiError } from '@middlewares/error.middleware.js';
+import { sendSuccess } from '#utils/apiResponse.js';
+import { env } from '#config/env.js';
+import { ApiError } from '#middlewares/error.middleware.js';
 import * as authService from './auth.service.js';
 
 const REFRESH_COOKIE = 'refresh_token';

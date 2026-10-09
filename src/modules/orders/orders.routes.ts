@@ -1,6 +1,6 @@
 import { Router } from 'express';
-import { authenticate } from '@middlewares/auth.middleware.js';
-import { validateBody, validateParams, validateQuery } from '@middlewares/validate.middleware.js';
+import { authenticate } from '#middlewares/auth.middleware.js';
+import { validateBody, validateParams, validateQuery } from '#middlewares/validate.middleware.js';
 import * as ordersController from './orders.controller.js';
 import { checkoutSchema, listOrdersQuerySchema, orderParamsSchema } from './orders.types.js';
 

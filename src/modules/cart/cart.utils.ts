@@ -1,7 +1,7 @@
 import { and, desc, eq } from 'drizzle-orm';
-import { db } from '@db/index.js';
-import { cartItems, carts, products, productVariants } from '@db/schema.js';
-import { ApiError } from '@middlewares/error.middleware.js';
+import { db } from '#db/index.js';
+import { cartItems, carts, products, productVariants } from '#db/schema.js';
+import { ApiError } from '#middlewares/error.middleware.js';
 import { MAX_ITEM_QUANTITY } from './cart.types.js';
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];

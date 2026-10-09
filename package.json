@@ -6,8 +6,34 @@
   "engines": {
     "node": ">=24"
   },
+  "imports": {
+    "#config/*": {
+      "storeforge-src": "./src/config/*",
+      "default": "./dist/config/*"
+    },
+    "#db/*": {
+      "storeforge-src": "./src/db/*",
+      "default": "./dist/db/*"
+    },
+    "#docs/*": {
+      "storeforge-src": "./src/docs/*",
+      "default": "./dist/docs/*"
+    },
+    "#middlewares/*": {
+      "storeforge-src": "./src/middlewares/*",
+      "default": "./dist/middlewares/*"
+    },
+    "#routes/*": {
+      "storeforge-src": "./src/routes/*",
+      "default": "./dist/routes/*"
+    },
+    "#utils/*": {
+      "storeforge-src": "./src/utils/*",
+      "default": "./dist/utils/*"
+    }
+  },
   "scripts": {
-    "dev": "tsx watch src/server.ts",
+    "dev": "tsx watch --conditions=storeforge-src src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
     "db:generate": "drizzle-kit generate",
@@ -16,7 +42,7 @@
     "db:seed": "tsx src/db/seed.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit && tsc -p tests",
-    "docs:lint": "tsx scripts/lint-openapi.ts",
+    "docs:lint": "tsx --conditions=storeforge-src scripts/lint-openapi.ts",
     "format": "prettier --write ."
   },
   "dependencies": {

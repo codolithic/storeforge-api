@@ -15,14 +15,8 @@
     "declaration": false,
     "sourceMap": true,
     "types": ["node"],
-    "paths": {
-      "@config/*": ["./src/config/*"],
-      "@middlewares/*": ["./src/middlewares/*"],
-      "@db/*": ["./src/db/*"],
-      "@routes/*": ["./src/routes/*"],
-      "@utils/*": ["./src/utils/*"],
-      "@docs/*": ["./src/docs/*"]
-    }
+    // Resolves the package.json `imports` aliases (#config/*, #db/*, ...) to src/ instead of dist/.
+    "customConditions": ["storeforge-src"]
   },
   "include": ["src/**/*.ts"],
   "exclude": ["node_modules", "dist"]

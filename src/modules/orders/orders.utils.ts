@@ -1,5 +1,5 @@
 import { and, asc, count, desc, eq, notExists, sql, sum, inArray, gt } from 'drizzle-orm';
-import { db } from '@db/index.js';
+import { db } from '#db/index.js';
 import {
   addresses,
   carts,
@@ -7,8 +7,8 @@ import {
   orderItems,
   orders,
   payments,
-} from '@db/schema.js';
-import { ApiError } from '@middlewares/error.middleware.js';
+} from '#db/schema.js';
+import { ApiError } from '#middlewares/error.middleware.js';
 
 export type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 

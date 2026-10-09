@@ -1,5 +1,5 @@
 import { and, asc, count, desc, eq, notExists, sql } from 'drizzle-orm';
-import { db } from '@db/index.js';
+import { db } from '#db/index.js';
 import {
   cartItems,
   carts,
@@ -9,8 +9,8 @@ import {
   payments,
   products,
   productVariants,
-} from '@db/schema.js';
-import { ApiError } from '@middlewares/error.middleware.js';
+} from '#db/schema.js';
+import { ApiError } from '#middlewares/error.middleware.js';
 import * as gateway from '../payments/payments.gateway.js';
 import {
   findOrder,
