@@ -40,7 +40,7 @@ npm run docs:lint    # build the OpenAPI spec and run `redocly lint` on it (redo
 npm run format       # format all the files
 ```
 
-Always run `npm run typecheck` and `npm test` after making changes before considering a task done. There is no linter. Prettier is configured (single quotes, semicolons, trailing commas, `printWidth: 100`) but not enforced, and a few files (`error.middleware.ts`, `auth.service.ts`, `utils/jwt.ts`) aren't formatted yet — run Prettier on the files you change, not repo-wide, to keep diffs focused.
+Always run `npm run typecheck` and `npm test` after making changes before considering a task done. There is no linter.
 
 ### Tests
 
@@ -68,15 +68,13 @@ Routes are mounted at **`/api`** (e.g. `/api/products`, `/api/auth/login`), not 
 
 ### Note about payment gateway
 
-We will not be using any real payment gateways and instead we will just mock the payment gateway. What rule dictates the failed payment is yet to be decided.
+We will not be using any real payment gateways and instead we will just mock the payment gateway. The simulated gateway lives in payments.gateway.ts and `tok_decline` and `tok_gateway_error` triggers the failure.
 
 **OpenAPI docs:** `GET /api/docs` serves the Scalar reference UI and `GET /api/docs/openapi.json` the OpenAPI 3.1 spec, built once at startup by `zod-openapi` (`src/docs/openapi.ts`). Each module has a `<module>.openapi.ts` whose paths reuse the module's real Zod request validators. Its response schemas are docs-only, so each one is pinned to the service's return type with `type _ = Assert<Documents<typeof schema, ReturnOf<typeof service.fn>>>`, and drift fails `npm run typecheck`. When you add or change a route, update its `*.openapi.ts` too: `tests/docs.test.ts` fails if the documented operations don't exactly match the routes in `mounts` (`routes/index.ts`). The docs page gets its own nonce-based CSP (`src/docs/docs.routes.ts`); every other route keeps helmet's default.
 
 **Request pipeline:** `routes` → `controller` (HTTP only, thin) → `service` (business logic, Drizzle) → `db`.
 
 **File naming inside a module is prefixed, not bare:** `auth.routes.ts`, `auth.controller.ts`, `auth.service.ts`, `auth.types.ts` — not `routes.ts`. Follow this when adding files.
-
-**Implementation status** — being filled in incrementally:
 
 - `auth` — full service layer; the reference pattern: `types.ts` (Zod schemas) → `service.ts` (logic) → `controller.ts` (calls the service) → `routes.ts` (wires middleware).
 - `products` — `GET /products` is real (`products.service.ts`: pagination, category-slug filter including subcategories, name search, `basePrice` range, sort; lists only `status = 'active'`). `GET /products/:slug` is real too (category, images, and variants with `inStock` instead of the raw stock count; 404 for non-active products).
@@ -89,7 +87,7 @@ We will not be using any real payment gateways and instead we will just mock the
 
 ## Order and Payment flow
 
-To learn about how payment status drives the order status, follow @order-and-payment-flow.
+To learn about how payment status drives the order status, follow @order-and-payment-flow.md.
 
 ## Domain model (read before touching catalog/cart/order code)
 
@@ -97,10 +95,10 @@ To learn about how payment status drives the order status, follow @order-and-pay
 - **Never live-join order data to current product/price.** `order_items` snapshots `productName`, `variantAttributes`, and `unitPrice` at purchase time; `cart_items` snapshots `unitPriceSnapshot`. Preserve this when writing cart/order logic.
 - **Categories are a self-referencing tree** via nullable `categories.parentId`; the data is two levels deep (10 roots) and the menu builder assumes that. Products are attached to both root and child categories.
 - **Carts support guests:** `carts.userId` is nullable and `carts.sessionId` identifies an anonymous cart. Current cart routes are all behind `authenticate`, so the guest path is modelled but not yet wired up.
-- **`inventory_reservations`** are short-lived stock holds taken during checkout and released on failure/timeout — checkout logic should create them rather than decrementing `stockQuantity` directly.
+- **`inventory_reservations`** are short-lived stock holds taken during checkout and released on failure/timeout — checkout logic should create them. When the payment succeeds `stockQuantity` is decremented.
 - **Reviews** (`reviews.service.ts`) require a `fulfilled` order containing any variant of the product, and allow one per `(userId, productId)`. The schema has no unique index for that rule, so the check and insert run in one synchronous transaction.
 - **Column types:** timestamps are `text` ISO-8601 strings defaulting to `current_timestamp`, and all money is `real` (SQLite float). Stay consistent with both rather than introducing a second convention.
-- **Order and Payment Status:** The order status depends on the payment status. For detail guide, follow @db-schema.md.
+- **Order and Payment Status:** The order status depends on the payment status. For detail guide, follow @order-and-payment-flow.md.
 
 ## Auth flow
 
@@ -143,7 +141,7 @@ For a guide on database tables, columns and relations between tables follow @db-
 
 Most of the tables has createdAt and updatedAt columns and some tables has only createdAt. There are rules around how these columns are populated. For detail guide, follow @timestamp-rules.md.
 
-## Logic behind inventory reservatiosn
+## Logic behind inventory reservations
 
 To learn about how inventory reservations work, follow @inventory-reservation-guide.md.
 
@@ -166,7 +164,6 @@ Optional, with defaults: `NODE_ENV=development`, `PORT=3000`, `DATABASE_URL=./da
 ## What Not to Do
 
 - Don't add a new HTTP client/ORM library without checking this file first — Drizzle + `better-sqlite3` is the intended stack for this project's lifetime (SQLite is a deliberate choice for the sample).
-- Don't remove the dummy-data TODOs' surrounding structure (route protection, response shape) when replacing them with real logic — only the data source should change.
 - The dist folder in the root directory stores the compiled source code of the app. Do not touch this folder (including any files inside it) and do not make any changes to any of the files inside this.
 - There are seeding related files in src/db - seed-schema.ts, seed-table.ts and seed.ts. Do not touch these files.
 - If you ever need to make changes to src/db/schema.ts first ask even when you are in auto mode.

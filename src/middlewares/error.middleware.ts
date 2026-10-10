@@ -22,9 +22,16 @@ export const notFoundHandler = (req: Request, res: Response): void => {
 // Express 5 automatically forwards rejected promises from async route
 // handlers/middleware to this error handler — no manual try/catch or
 // wrapper function needed in controllers.
-export const errorHandler = (err: unknown, _req: Request, res: Response, _next: NextFunction): void => {
+export const errorHandler = (
+  err: unknown,
+  _req: Request,
+  res: Response,
+  _next: NextFunction,
+): void => {
   if (err instanceof ApiError) {
-    res.status(err.status).json({ success: false, error: { code: err.code, message: err.message } });
+    res
+      .status(err.status)
+      .json({ success: false, error: { code: err.code, message: err.message } });
     return;
   }
 
@@ -37,5 +44,7 @@ export const errorHandler = (err: unknown, _req: Request, res: Response, _next: 
   }
 
   console.error(err);
-  res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: 'Something went wrong' } });
+  res
+    .status(500)
+    .json({ success: false, error: { code: 'INTERNAL_ERROR', message: 'Something went wrong' } });
 };

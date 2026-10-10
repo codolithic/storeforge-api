@@ -9,7 +9,9 @@ export interface AccessTokenPayload {
 
 // Short-lived, stateless JWT — verified on every request without a DB hit.
 export const signAccessToken = (payload: AccessTokenPayload): string =>
-  jwt.sign(payload, env.JWT_ACCESS_SECRET, { expiresIn: env.ACCESS_TOKEN_TTL as jwt.SignOptions['expiresIn'] });
+  jwt.sign(payload, env.JWT_ACCESS_SECRET, {
+    expiresIn: env.ACCESS_TOKEN_TTL as jwt.SignOptions['expiresIn'],
+  });
 
 export const verifyAccessToken = (token: string): AccessTokenPayload & jwt.JwtPayload =>
   jwt.verify(token, env.JWT_ACCESS_SECRET) as AccessTokenPayload & jwt.JwtPayload;

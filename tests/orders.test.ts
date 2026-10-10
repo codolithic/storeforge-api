@@ -156,15 +156,13 @@ const latestOrderOf = async (userId: number) => {
 beforeAll(async () => {
   migrateTestDb();
   await seedCatalog();
-  await db
-    .insert(productVariants)
-    .values({
-      id: TOGGLE_VARIANT_ID,
-      productId: 7,
-      sku: 'TOASTER-1',
-      price: 10,
-      stockQuantity: 10,
-    });
+  await db.insert(productVariants).values({
+    id: TOGGLE_VARIANT_ID,
+    productId: 7,
+    sku: 'TOASTER-1',
+    price: 10,
+    stockQuantity: 10,
+  });
   await db.update(productVariants).set({ stockQuantity: 1000 }).where(eq(productVariants.id, 2));
 });
 
