@@ -5,12 +5,14 @@ Layered, feature-first structure:
 - src/db/index.ts - better-sqlite3 client (WAL + foreign_keys ON), exports `db` and all tables
 - src/db/seed-*.ts - related to utility code to seed the database
 - src/middlewares/ - auth, error, rateLimiter, validate
-- src/modules/ - one folder per resource: auth, products, categories, cart, orders, admin
+- src/modules/ - one folder per resource: auth, products, categories, cart, orders, payments, reviews, admin
   - *.controller.ts - a bridge between the route and the business layer
   - *.routes.ts - provides a routes for the specific module
   - *.service.ts - implements a business layer
   - *.types.ts - provides a types required by the module controller, routes and service
   - *.openapi.ts - OpenAPI paths for the module's routes (request schemas from *.types.ts, docs-only response schemas)
+  - *.utils.ts - optional helpers shared by the module's service (and other modules), e.g. cart.utils.ts, orders.utils.ts
+  - payments/payments.gateway.ts - simulated payment gateway used by checkout; the `paymentToken` decides the outcome
 - src/routes/index.ts - aggregates module routers (exported `mounts` table), mounted at /api by app.ts
 - src/docs/ - OpenAPI document builder, shared doc helpers, and the /api/docs router (Scalar UI + openapi.json)
 - scripts/ - dev scripts run with tsx (e.g. lint-openapi.ts for `npm run docs:lint`)
